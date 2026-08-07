@@ -82,7 +82,10 @@ function navigate(next: View) { view.value = next; mobileOpen.value = false; if 
 function gameIcon(game: Game) { return game.slug === 'mega-sena' ? Sparkles : game.slug === 'lotofacil' ? Ticket : game.slug === 'quina' ? CircleDollarSign : game.slug === 'timemania' ? Trophy : game.slug === 'dia-de-sorte' ? Banknote : game.slug === 'dupla-sena' ? WalletCards : game.slug === 'lotomania' ? Target : ShieldCheck; }
 
 async function loadCatalog() {
-  try { const response = await api<{ data: Game[] }>('/api/v1/catalog'); catalog.value = response.data; }
+  try {
+    const response = await api<{ data?: Game[] }>('/api/v1/catalog');
+    catalog.value = Array.isArray(response.data) && response.data.length ? response.data : demoCatalog;
+  }
   catch { catalog.value = demoCatalog; }
 }
 function openLogin(portal: 'cliente' | 'admin' = 'cliente') { loginPortal.value = portal; isRegister.value = false; loginError.value = ''; isLogin.value = true; view.value = 'login'; mobileOpen.value = false; }
