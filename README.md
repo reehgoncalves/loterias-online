@@ -26,6 +26,8 @@ Plataforma nova, separada do `apetit-ops-hub`, com storefront em Vue 3 e API Lar
   duplicados no mesmo lote;
 - e-mails transacionais e marketing responsivos com CTA, opt-in, descadastro e
   scheduler diário/próximo ao sorteio;
+- laboratório de pagamentos com suíte PHPUnit, validação de assinatura do
+  webhook, testes de idempotência e workflow de segurança no GitHub Actions;
 - contas seed de demonstração e depoimentos marcados como demonstrativos.
 
 ## Rodar localmente
@@ -67,6 +69,13 @@ consentimento. O comando `marketing:send` não envia para opt-out e é idempoten
 por cliente/concurso/template.
 
 Em produção, use um worker persistente e o scheduler do provedor. O adapter de resultados usa `LOTTERY_RESULTS_URL` e mantém o endpoint configurável para acompanhar alterações do serviço oficial.
+
+## Laboratório de pagamentos
+
+Consulte [`docs/payment-test-lab.md`](docs/payment-test-lab.md) para executar a
+matriz completa sem cobranças reais. O workflow `Payment safety tests` roda os
+testes de checkout, webhook, idempotência, risco e o build do frontend em cada
+push para `main` e pull request.
 
 ## Stripe
 

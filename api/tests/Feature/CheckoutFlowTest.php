@@ -30,6 +30,7 @@ class CheckoutFlowTest extends TestCase
         Env::getRepository()->set('RISK_PAYOUT_RATIO', 0.70);
         Env::getRepository()->set('RISK_SAFETY_RATIO', 0.80);
         Env::getRepository()->set('STRIPE_SECRET_KEY', '');
+        Env::getRepository()->set('STRIPE_WEBHOOK_SECRET', '');
     }
 
     protected function tearDown(): void
@@ -38,6 +39,7 @@ class CheckoutFlowTest extends TestCase
         Env::getRepository()->set('RISK_PAYOUT_RATIO', '');
         Env::getRepository()->set('RISK_SAFETY_RATIO', '');
         Env::getRepository()->set('STRIPE_SECRET_KEY', '');
+        Env::getRepository()->set('STRIPE_WEBHOOK_SECRET', '');
         parent::tearDown();
     }
 
@@ -102,6 +104,24 @@ class CheckoutFlowTest extends TestCase
         $this->assertDatabaseHas('bets', ['order_id' => $orderId, 'status' => 'paid', 'payment_status' => 'succeeded']);
         $this->assertSame(1, LedgerEntry::where('idempotency_key', 'payment-confirmed-'.$payment->id)->count());
         Mail::assertQueued(BetConfirmationMail::class, 1);
+    }
+
+    public function test_webhook_rejects_invalid_signature_and_accepts_a_fresh_valid_signature(): void
+    {
+        Env::getRepository()->set('STRIPE_WEBHOOK_SECRET', 'whsec_test_lab');
+        $payload = json_encode(['type' => 'payment_intent.processing', 'data' => ['object' => []]], JSON_THROW_ON_ERROR);
+
+        $this->call('POST', '/api/stripe/webhook', [], [], [], [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_STRIPE_SIGNATURE' => 't='.time().',v1=invalid',
+        ], $payload)->assertBadRequest();
+
+        $timestamp = (string) time();
+        $signature = hash_hmac('sha256', $timestamp.'.'.$payload, 'whsec_test_lab');
+        $this->call('POST', '/api/stripe/webhook', [], [], [], [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_STRIPE_SIGNATURE' => 't='.$timestamp.',v1='.$signature,
+        ], $payload)->assertOk()->assertJson(['received' => true]);
     }
 
     private function fixture(): array
