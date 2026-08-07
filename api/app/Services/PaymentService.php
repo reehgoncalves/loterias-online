@@ -19,13 +19,18 @@ class PaymentService
 {
     public function __construct(private StripeCustomerService $customers) {}
 
-    public function checkout(Bet $bet, User $user, string $method): array
+    public function checkout(Bet $bet, User $user, string $method, ?string $paymentMethodId = null): array
     {
         if (! in_array($method, ['card', 'pix'], true)) throw new RuntimeException('Método de pagamento não permitido. Boleto está temporariamente desativado.');
         $key = (string) env('STRIPE_SECRET_KEY');
         $payment = Payment::firstOrCreate(['idempotency_key' => 'checkout-'.$bet->id], ['user_id' => $user->id, 'bet_id' => $bet->id, 'provider' => 'stripe', 'method' => $method, 'amount_cents' => $bet->amount_cents, 'currency' => env('STRIPE_CURRENCY', 'brl'), 'status' => 'pending']);
         if ($payment->provider_checkout_id) return ['payment' => $payment, 'checkout_url' => $payment->raw_payload['url'] ?? null];
         if ($key === '') return ['payment' => $payment, 'checkout_url' => null, 'mode' => 'stripe_not_configured'];
+        if ($method === 'pix') {
+            $customerId = $this->customers->ensure($user);
+            return array_merge(['payment' => $payment], $this->createPixPaymentIntent($payment, $bet->amount_cents, $customerId, ['bet_id' => $bet->id, 'user_id' => $user->id, 'customer_id' => $customerId], 'Loterias Online — aposta '.$bet->id));
+        }
+        if ($paymentMethodId && $method === 'card') return $this->chargeBetWithSavedCard($bet, $user, $payment, $paymentMethodId);
         $customerId = $this->customers->ensure($user);
 
         $params = [
@@ -62,7 +67,7 @@ class PaymentService
         return ['payment' => $payment->fresh(), 'checkout_url' => $payload['url'] ?? null];
     }
 
-    public function checkoutOrder(Order $order, User $user, string $method): array
+    public function checkoutOrder(Order $order, User $user, string $method, ?string $paymentMethodId = null): array
     {
         if (! in_array($method, ['card', 'pix'], true)) throw new RuntimeException('Método de pagamento não permitido. Boleto está temporariamente desativado.');
         $key = (string) env('STRIPE_SECRET_KEY');
@@ -72,6 +77,12 @@ class PaymentService
         ]);
         if ($payment->provider_checkout_id) return ['order' => $order->fresh(['items.game', 'items.draw']), 'payment' => $payment, 'checkout_url' => $payment->raw_payload['url'] ?? null];
         if ($key === '') return ['order' => $order->fresh(['items.game', 'items.draw']), 'payment' => $payment, 'checkout_url' => null, 'mode' => 'stripe_not_configured'];
+        if ($method === 'pix') {
+            $customerId = $this->customers->ensure($user);
+            $pix = $this->createPixPaymentIntent($payment, $order->total_cents, $customerId, ['order_id' => $order->id, 'user_id' => $user->id, 'customer_id' => $customerId], 'Loterias Online — pedido '.$order->id);
+            return array_merge(['order' => $order->fresh(['items.game', 'items.draw']), 'payment' => $payment->fresh()], $pix);
+        }
+        if ($paymentMethodId && $method === 'card') return $this->chargeOrderWithSavedCard($order, $user, $payment, $paymentMethodId);
         $customerId = $this->customers->ensure($user);
 
         $params = [
@@ -112,6 +123,128 @@ class PaymentService
         $payment->update(['provider_checkout_id' => $payload['id'] ?? null, 'raw_payload' => $payload]);
         $order->update(['provider_checkout_id' => $payload['id'] ?? null, 'raw_payload' => $payload]);
         return ['order' => $order->fresh(['items.game', 'items.draw']), 'payment' => $payment->fresh(), 'checkout_url' => $payload['url'] ?? null];
+    }
+
+    private function chargeOrderWithSavedCard(Order $order, User $user, Payment $payment, string $paymentMethodId): array
+    {
+        $customerId = $this->customers->ensure($user);
+        $verifiedPaymentMethodId = $this->customers->verifyCard($user, $paymentMethodId);
+
+        if ($payment->provider_payment_id && in_array($payment->status, ['processing', 'succeeded'], true)) {
+            $payload = $payment->raw_payload ?? [];
+            return ['order' => $order->fresh(['items.game', 'items.draw']), 'payment' => $payment, 'mode' => 'payment_intent', 'payment_intent_status' => $payload['status'] ?? $payment->status, 'client_secret' => null];
+        }
+
+        $params = [
+            'amount' => $order->total_cents,
+            'currency' => env('STRIPE_CURRENCY', 'brl'),
+            'customer' => $customerId,
+            'payment_method' => $verifiedPaymentMethodId,
+            'payment_method_types[0]' => 'card',
+            'confirm' => 'true',
+            'use_stripe_sdk' => 'true',
+            'setup_future_usage' => 'off_session',
+            'return_url' => env('STRIPE_SUCCESS_URL'),
+            'description' => 'Loterias Online — pedido '.$order->id,
+            'metadata[order_id]' => (string) $order->id,
+            'metadata[user_id]' => (string) $user->id,
+            'metadata[customer_id]' => $customerId,
+        ];
+        try {
+            $response = Http::timeout((int) env('STRIPE_TIMEOUT_SECONDS', 15))->asForm()->withBasicAuth((string) env('STRIPE_SECRET_KEY'), '')->withHeaders(['Idempotency-Key' => 'stripe-order-payment-'.$order->id.'-'.$verifiedPaymentMethodId])->post('https://api.stripe.com/v1/payment_intents', $params);
+        } catch (\Throwable $exception) {
+            $payment->update(['raw_payload' => ['stripe_error' => ['message' => 'stripe_unavailable']]]);
+            throw new RuntimeException('Stripe está indisponível no momento.', 0, $exception);
+        }
+        if (! $response->successful()) {
+            $payment->update(['raw_payload' => ['stripe_error' => $response->json('error', $response->json())]]);
+            throw new RuntimeException('Stripe não confirmou o cartão: '.$response->json('error.message', 'verifique o cartão e tente novamente'));
+        }
+
+        $payload = $response->json();
+        if (! is_array($payload) || ! str_starts_with((string) ($payload['id'] ?? ''), 'pi_')) {
+            throw new RuntimeException('Stripe retornou um pagamento incompleto.');
+        }
+        $status = (string) ($payload['status'] ?? 'processing');
+        $payment->update(['provider_payment_id' => $payload['id'], 'status' => $status === 'processing' ? 'processing' : 'pending', 'raw_payload' => $payload]);
+
+        return ['order' => $order->fresh(['items.game', 'items.draw']), 'payment' => $payment->fresh(), 'mode' => 'payment_intent', 'payment_intent_status' => $status, 'client_secret' => $status === 'requires_action' ? ($payload['client_secret'] ?? null) : null];
+    }
+
+    private function createPixPaymentIntent(Payment $payment, int $amountCents, ?string $customerId, array $metadata, string $description): array
+    {
+        if ($payment->provider_payment_id && ! in_array($payment->status, ['failed', 'cancelled'], true)) {
+            return $this->pixResponse($payment->raw_payload ?? [], $payment->provider_payment_id);
+        }
+
+        $params = [
+            'amount' => $amountCents,
+            'currency' => env('STRIPE_CURRENCY', 'brl'),
+            'payment_method_types[0]' => 'pix',
+            'confirm' => 'true',
+            'return_url' => env('STRIPE_SUCCESS_URL'),
+            'description' => $description,
+        ];
+        if ($customerId) $params['customer'] = $customerId;
+        foreach ($metadata as $key => $value) $params['metadata['.$key.']'] = (string) $value;
+
+        try {
+            $response = Http::timeout((int) env('STRIPE_TIMEOUT_SECONDS', 15))->asForm()->withBasicAuth((string) env('STRIPE_SECRET_KEY'), '')->withHeaders(['Idempotency-Key' => 'stripe-pix-payment-'.$payment->id])->post('https://api.stripe.com/v1/payment_intents', $params);
+        } catch (\Throwable $exception) {
+            $payment->update(['raw_payload' => ['stripe_error' => ['message' => 'stripe_unavailable']]]);
+            throw new RuntimeException('Stripe está indisponível no momento.', 0, $exception);
+        }
+        if (! $response->successful()) {
+            $payment->update(['raw_payload' => ['stripe_error' => $response->json('error', $response->json())]]);
+            throw new RuntimeException('Stripe não criou o PIX: '.$response->json('error.message', 'verifique a configuração de PIX e tente novamente'));
+        }
+
+        $payload = $response->json();
+        if (! is_array($payload) || ! str_starts_with((string) ($payload['id'] ?? ''), 'pi_')) {
+            throw new RuntimeException('Stripe retornou um PIX incompleto.');
+        }
+        $status = (string) ($payload['status'] ?? 'processing');
+        $payment->update(['provider_payment_id' => $payload['id'], 'status' => $status === 'succeeded' ? 'pending' : 'processing', 'raw_payload' => $payload]);
+        return $this->pixResponse($payload, (string) $payload['id']);
+    }
+
+    private function pixResponse(array $payload, string $paymentIntentId): array
+    {
+        $action = $payload['next_action']['pix_display_qr_code'] ?? [];
+        return [
+            'mode' => 'payment_intent',
+            'payment_intent_status' => $payload['status'] ?? 'processing',
+            'pix' => [
+                'payment_intent_id' => $paymentIntentId,
+                'qr_code' => [
+                    'payload' => $action['data'] ?? null,
+                    'image_url' => $action['image_url_png'] ?? null,
+                    'hosted_url' => $action['hosted_instructions_url'] ?? null,
+                    'expires_at' => $action['expires_at'] ?? null,
+                ],
+            ],
+        ];
+    }
+
+    private function chargeBetWithSavedCard(Bet $bet, User $user, Payment $payment, string $paymentMethodId): array
+    {
+        $customerId = $this->customers->ensure($user);
+        $verifiedPaymentMethodId = $this->customers->verifyCard($user, $paymentMethodId);
+        try {
+            $response = Http::timeout((int) env('STRIPE_TIMEOUT_SECONDS', 15))->asForm()->withBasicAuth((string) env('STRIPE_SECRET_KEY'), '')->withHeaders(['Idempotency-Key' => 'stripe-bet-payment-'.$bet->id.'-'.$verifiedPaymentMethodId])->post('https://api.stripe.com/v1/payment_intents', [
+                'amount' => $bet->amount_cents, 'currency' => env('STRIPE_CURRENCY', 'brl'), 'customer' => $customerId, 'payment_method' => $verifiedPaymentMethodId,
+                'payment_method_types[0]' => 'card', 'confirm' => 'true', 'use_stripe_sdk' => 'true', 'setup_future_usage' => 'off_session', 'return_url' => env('STRIPE_SUCCESS_URL'),
+                'metadata[bet_id]' => (string) $bet->id, 'metadata[user_id]' => (string) $user->id, 'metadata[customer_id]' => $customerId,
+            ]);
+        } catch (\Throwable $exception) {
+            throw new RuntimeException('Stripe está indisponível no momento.', 0, $exception);
+        }
+        if (! $response->successful()) throw new RuntimeException('Stripe não confirmou o cartão: '.$response->json('error.message', 'verifique o cartão e tente novamente'));
+        $payload = $response->json();
+        if (! is_array($payload) || ! str_starts_with((string) ($payload['id'] ?? ''), 'pi_')) throw new RuntimeException('Stripe retornou um pagamento incompleto.');
+        $status = (string) ($payload['status'] ?? 'processing');
+        $payment->update(['provider_payment_id' => $payload['id'], 'status' => $status === 'processing' ? 'processing' : 'pending', 'raw_payload' => $payload]);
+        return ['payment' => $payment->fresh(), 'mode' => 'payment_intent', 'payment_intent_status' => $status, 'client_secret' => $status === 'requires_action' ? ($payload['client_secret'] ?? null) : null];
     }
 
     private function formatNumbers(array $numbers): string

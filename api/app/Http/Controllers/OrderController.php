@@ -27,6 +27,7 @@ class OrderController extends Controller
             'tickets.*.pool_id' => 'nullable|integer',
             'tickets.*.shares' => 'nullable|integer|min:1|max:20',
             'method' => 'required|in:card,pix',
+            'payment_method_id' => 'nullable|string|max:100',
         ]);
 
         $idempotencyKey = $request->header('Idempotency-Key', 'order-'.Str::uuid());
@@ -110,7 +111,7 @@ class OrderController extends Controller
         }
 
         try {
-            $checkout = $payments->checkoutOrder($order, $request->user(), $data['method']);
+            $checkout = $payments->checkoutOrder($order, $request->user(), $data['method'], $data['payment_method_id'] ?? null);
         } catch (\RuntimeException $exception) {
             return response()->json(['message' => $exception->getMessage(), 'data' => ['order' => $order->fresh(['items.game', 'items.draw']), 'payment' => $order->payments()->latest()->first()]], 502);
         }

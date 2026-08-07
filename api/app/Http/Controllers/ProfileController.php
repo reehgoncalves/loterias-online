@@ -19,6 +19,25 @@ class ProfileController extends Controller
         ]]);
     }
 
+    public function paymentMethods(Request $request, StripeCustomerService $customers)
+    {
+        if ((string) env('STRIPE_SECRET_KEY') === '') {
+            return response()->json(['data' => ['configured' => false, 'cards' => [], 'publishable_key' => null]]);
+        }
+
+        try {
+            $cards = $customers->listCards($request->user());
+        } catch (RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 502);
+        }
+
+        return response()->json(['data' => [
+            'configured' => true,
+            'cards' => $cards,
+            'publishable_key' => env('STRIPE_PUBLISHABLE_KEY') ?: null,
+        ]]);
+    }
+
     public function billingPortal(Request $request, StripeCustomerService $customers)
     {
         $secret = (string) env('STRIPE_SECRET_KEY');

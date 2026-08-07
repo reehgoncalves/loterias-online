@@ -64,4 +64,72 @@ class StripeCustomerService
             throw new RuntimeException('Stripe não sincronizou o cliente: '.$response->json('error.message', 'erro desconhecido'));
         }
     }
+
+    /** @return array<int, array{id: string, brand: string, last4: string, exp_month: int|null, exp_year: int|null, funding: string|null}> */
+    public function listCards(User $user): array
+    {
+        $secret = (string) env('STRIPE_SECRET_KEY');
+        if ($secret === '') return [];
+
+        $customerId = $this->ensure($user);
+        if (! $customerId) return [];
+
+        try {
+            $response = Http::timeout((int) env('STRIPE_TIMEOUT_SECONDS', 15))
+                ->withBasicAuth($secret, '')
+                ->get('https://api.stripe.com/v1/payment_methods', [
+                    'customer' => $customerId,
+                    'type' => 'card',
+                    'limit' => 20,
+                ]);
+        } catch (\Throwable $exception) {
+            throw new RuntimeException('Stripe está indisponível no momento.', 0, $exception);
+        }
+
+        if (! $response->successful()) {
+            throw new RuntimeException('Stripe não listou os cartões: '.$response->json('error.message', 'erro desconhecido'));
+        }
+
+        return collect($response->json('data', []))->map(function (array $method): array {
+            $card = $method['card'] ?? [];
+            return [
+                'id' => (string) ($method['id'] ?? ''),
+                'brand' => strtoupper((string) ($card['brand'] ?? 'card')),
+                'last4' => (string) ($card['last4'] ?? ''),
+                'exp_month' => isset($card['exp_month']) ? (int) $card['exp_month'] : null,
+                'exp_year' => isset($card['exp_year']) ? (int) $card['exp_year'] : null,
+                'funding' => isset($card['funding']) ? (string) $card['funding'] : null,
+            ];
+        })->filter(fn (array $method): bool => str_starts_with($method['id'], 'pm_') && $method['last4'] !== '')->values()->all();
+    }
+
+    public function verifyCard(User $user, string $paymentMethodId): string
+    {
+        if (! preg_match('/^pm_[A-Za-z0-9_-]+$/', $paymentMethodId)) {
+            throw new RuntimeException('Cartão selecionado inválido.');
+        }
+
+        $secret = (string) env('STRIPE_SECRET_KEY');
+        if ($secret === '') throw new RuntimeException('O Stripe ainda não está configurado neste ambiente.');
+
+        $customerId = $this->ensure($user);
+        try {
+            $response = Http::timeout((int) env('STRIPE_TIMEOUT_SECONDS', 15))
+                ->withBasicAuth($secret, '')
+                ->get('https://api.stripe.com/v1/payment_methods/'.$paymentMethodId);
+        } catch (\Throwable $exception) {
+            throw new RuntimeException('Stripe está indisponível no momento.', 0, $exception);
+        }
+
+        if (! $response->successful()) {
+            throw new RuntimeException('Não foi possível validar o cartão selecionado.');
+        }
+
+        $method = $response->json();
+        if (($method['type'] ?? null) !== 'card' || ($method['customer'] ?? null) !== $customerId) {
+            throw new RuntimeException('Esse cartão não pertence à conta logada.');
+        }
+
+        return $paymentMethodId;
+    }
 }

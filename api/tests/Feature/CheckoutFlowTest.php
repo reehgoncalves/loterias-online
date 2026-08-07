@@ -105,8 +105,8 @@ class CheckoutFlowTest extends TestCase
         $order->items()->create(['lottery_game_id' => $game->id, 'draw_id' => $draw->id, 'numbers' => [1, 2, 3, 4, 5, 6], 'amount_cents' => 100, 'shares' => 1, 'potential_prize_cents' => 100]);
         Env::getRepository()->set('STRIPE_SECRET_KEY', 'sk_test_fake');
         Http::fake([
-            'https://api.stripe.com/v1/customers' => Http::response(['id' => 'cus_test_pix'], 200),
-            'https://api.stripe.com/v1/checkout/sessions' => Http::response(['id' => 'cs_test_pix', 'url' => 'https://checkout.stripe.test/cs_test_pix'], 200),
+            'https://api.stripe.com/v1/customers*' => Http::response(['id' => 'cus_test_pix'], 200),
+            'https://api.stripe.com/v1/payment_intents' => Http::response(['id' => 'pi_test_pix', 'status' => 'requires_action', 'next_action' => ['pix_display_qr_code' => ['data' => 'pix-copy-paste', 'image_url_png' => 'https://stripe.test/pix.png', 'expires_at' => 1893456000]]], 200),
         ]);
 
         app(PaymentService::class)->checkoutOrder($order, $customer, 'pix');
@@ -114,8 +114,10 @@ class CheckoutFlowTest extends TestCase
         Http::assertSent(function (HttpRequest $request) use ($order): bool {
             parse_str((string) $request->body(), $data);
             return ($data['payment_method_types'][0] ?? null) === 'pix'
-                && ($data['payment_intent_data']['metadata']['order_id'] ?? null) === (string) $order->id;
+                && ($data['metadata']['order_id'] ?? null) === (string) $order->id;
         });
+        Http::assertSent(fn (HttpRequest $request) => str_contains($request->url(), '/v1/payment_intents') && str_contains((string) $request->body(), 'payment_method_types%5B0%5D=pix'));
+        $this->assertSame('pix-copy-paste', app(PaymentService::class)->checkoutOrder($order, $customer, 'pix')['pix']['qr_code']['payload']);
     }
 
     public function test_stripe_api_error_keeps_payment_retryable_and_surfaces_provider_message(): void
@@ -164,12 +166,12 @@ class CheckoutFlowTest extends TestCase
         Env::getRepository()->set('STRIPE_SECRET_KEY', 'sk_test_fake');
         Http::fake([
             'https://api.stripe.com/v1/customers' => Http::response(['id' => 'cus_test_legacy'], 200),
-            'https://api.stripe.com/v1/checkout/sessions' => Http::response(['id' => 'cs_legacy_pix', 'url' => 'https://checkout.stripe.test/cs_legacy_pix'], 200),
+            'https://api.stripe.com/v1/payment_intents' => Http::response(['id' => 'pi_legacy_pix', 'status' => 'requires_action', 'next_action' => ['pix_display_qr_code' => ['data' => 'legacy-pix']]], 200),
         ]);
 
         $this->actingAs($customer, 'sanctum')->postJson('/api/v1/payments/checkout', ['bet_id' => $bet->id, 'method' => 'pix'])
-            ->assertOk()->assertJsonPath('data.checkout_url', 'https://checkout.stripe.test/cs_legacy_pix');
-        $this->assertDatabaseHas('payments', ['bet_id' => $bet->id, 'provider_checkout_id' => 'cs_legacy_pix', 'method' => 'pix']);
+            ->assertOk()->assertJsonPath('data.pix.qr_code.payload', 'legacy-pix');
+        $this->assertDatabaseHas('payments', ['bet_id' => $bet->id, 'provider_payment_id' => 'pi_legacy_pix', 'method' => 'pix']);
     }
 
     public function test_billing_portal_api_creates_customer_and_session_without_exposing_stripe_key(): void
@@ -200,6 +202,43 @@ class CheckoutFlowTest extends TestCase
 
         $response->assertCreated();
         $this->assertDatabaseHas('users', ['email' => 'cadastro-stripe-automatico@test.local', 'stripe_customer_id' => 'cus_registered_test']);
+    }
+
+    public function test_customer_can_list_only_masked_cards_from_their_stripe_customer(): void
+    {
+        [$customer] = $this->fixture();
+        Env::getRepository()->set('STRIPE_SECRET_KEY', 'sk_test_fake');
+        Http::fake([
+            'https://api.stripe.com/v1/customers' => Http::response(['id' => 'cus_cards_test'], 200),
+            'https://api.stripe.com/v1/payment_methods*' => Http::response(['data' => [['id' => 'pm_card_visa', 'type' => 'card', 'card' => ['brand' => 'visa', 'last4' => '4242', 'exp_month' => 12, 'exp_year' => 2034, 'funding' => 'credit']]]], 200),
+        ]);
+
+        $this->actingAs($customer, 'sanctum')->getJson('/api/v1/profile/payment-methods')
+            ->assertOk()->assertJsonPath('data.cards.0.id', 'pm_card_visa')->assertJsonPath('data.cards.0.last4', '4242')
+            ->assertJsonMissingPath('data.cards.0.card.number');
+    }
+
+    public function test_cart_can_charge_a_selected_saved_card_only_when_it_belongs_to_the_customer(): void
+    {
+        [$customer, $game, $draw] = $this->fixture();
+        $order = Order::create(['user_id' => $customer->id, 'total_cents' => 100, 'currency' => 'brl', 'status' => 'awaiting_payment', 'payment_status' => 'pending', 'idempotency_key' => 'saved-card-test']);
+        $order->items()->create(['lottery_game_id' => $game->id, 'draw_id' => $draw->id, 'numbers' => [1, 2, 3, 4, 5, 6], 'amount_cents' => 100, 'shares' => 1, 'potential_prize_cents' => 100]);
+        Env::getRepository()->set('STRIPE_SECRET_KEY', 'sk_test_fake');
+        Http::fake([
+            'https://api.stripe.com/v1/customers*' => Http::response(['id' => 'cus_saved_card_test'], 200),
+            'https://api.stripe.com/v1/payment_methods/pm_card_saved' => Http::response(['id' => 'pm_card_saved', 'type' => 'card', 'customer' => 'cus_saved_card_test'], 200),
+            'https://api.stripe.com/v1/payment_intents' => Http::response(['id' => 'pi_saved_card_test', 'status' => 'succeeded'], 200),
+        ]);
+
+        $result = app(PaymentService::class)->checkoutOrder($order, $customer, 'card', 'pm_card_saved');
+
+        $this->assertSame('payment_intent', $result['mode']);
+        $this->assertDatabaseHas('payments', ['order_id' => $order->id, 'provider_payment_id' => 'pi_saved_card_test']);
+        Http::assertSent(function (HttpRequest $request): bool {
+            if (! str_contains($request->url(), '/v1/payment_intents')) return false;
+            parse_str((string) $request->body(), $data);
+            return ($data['payment_method'] ?? null) === 'pm_card_saved' && ($data['customer'] ?? null) === 'cus_saved_card_test';
+        });
     }
 
     public function test_payment_webhook_marks_an_order_paid_only_once(): void
