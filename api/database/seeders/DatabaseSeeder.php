@@ -11,6 +11,7 @@ use App\Models\Payment;
 use App\Models\Testimonial;
 use App\Models\User;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
@@ -18,8 +19,11 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $password = env('SEED_DEFAULT_PASSWORD', 'Loterias@2026!');
-        $admin = User::updateOrCreate(['email'=>'admin@loterias.online'], ['name'=>'Admin Loterias Online','password'=>Hash::make($password),'portal'=>'admin','is_admin'=>true,'active'=>true,'marketing_opt_in'=>false,'email_verified_at'=>now()]);
-        $customer = User::updateOrCreate(['email'=>'cliente@loterias.online'], ['name'=>'Cliente Demonstração','password'=>Hash::make($password),'portal'=>'cliente','is_admin'=>false,'active'=>true,'marketing_opt_in'=>true,'email_verified_at'=>now()]);
+        $now = now();
+        $boolean = static fn (bool $value) => DB::raw($value ? 'true' : 'false');
+        DB::table('users')->updateOrInsert(['email'=>'admin@loterias.online'], ['name'=>'Admin Loterias Online','password'=>Hash::make($password),'portal'=>'admin','is_admin'=>$boolean(true),'active'=>$boolean(true),'marketing_opt_in'=>$boolean(false),'email_verified_at'=>$now,'updated_at'=>$now,'created_at'=>$now]);
+        DB::table('users')->updateOrInsert(['email'=>'cliente@loterias.online'], ['name'=>'Cliente Demonstração','password'=>Hash::make($password),'portal'=>'cliente','is_admin'=>$boolean(false),'active'=>$boolean(true),'marketing_opt_in'=>$boolean(true),'email_verified_at'=>$now,'updated_at'=>$now,'created_at'=>$now]);
+        $customer = User::where('email', 'cliente@loterias.online')->firstOrFail();
 
         $games = [
             ['slug'=>'mega-sena','name'=>'Mega-Sena','short_name'=>'MEGA','color'=>'#31b8b2','price_cents'=>500,'numbers_required'=>6,'range_max'=>60,'payout_rules'=>['4'=>20,'5'=>100,'6'=>1000],'max_prize_cents'=>50000000],
@@ -32,7 +36,10 @@ class DatabaseSeeder extends Seeder
             ['slug'=>'super-sete','name'=>'Super Sete','short_name'=>'7','color'=>'#41a86d','price_cents'=>300,'numbers_required'=>7,'range_max'=>9,'number_min'=>0,'allow_repeated_numbers'=>true,'selection_mode'=>'columns','special_options'=>['columns'=>7],'payout_rules'=>['3'=>3,'4'=>15,'5'=>100,'6'=>800,'7'=>5000],'max_prize_cents'=>20000000],
         ];
         foreach ($games as $index => $payload) {
+            $allowRepeated = (bool) ($payload['allow_repeated_numbers'] ?? false);
+            unset($payload['allow_repeated_numbers']);
             $game = LotteryGame::updateOrCreate(['slug'=>$payload['slug']], $payload);
+            DB::table('lottery_games')->where('id', $game->id)->update(['allow_repeated_numbers'=>$boolean($allowRepeated),'active'=>$boolean(true)]);
             Draw::updateOrCreate(['lottery_game_id'=>$game->id,'contest_number'=>3000+$index], ['draw_at'=>now()->addDays(1+($index%3))->setTime(20,0),'status'=>'open','payout_cap_cents'=>$game->max_prize_cents]);
             if ($index < 3) LotteryPool::updateOrCreate(['lottery_game_id'=>$game->id,'draw_id'=>$game->draws()->where('status','open')->first()->id,'name'=>['Mega-Sena'=>'Milionário da Semana','Lotofácil'=>'Fácil Premiado','Quina'=>'Quina Turbo'][$game->name]], ['description'=>'Cota demonstrativa com regras visíveis e acompanhamento por concurso.','share_price_cents'=>($index+1)*790,'total_shares'=>100+$index*50,'sold_shares'=>42+$index*18,'total_stake_cents'=>50000]);
         }
@@ -49,6 +56,8 @@ class DatabaseSeeder extends Seeder
             if ($fixture['payout_cents'] > 0) LedgerEntry::updateOrCreate(['idempotency_key'=>'seed-ledger-payout-'.$index], ['user_id'=>$customer->id,'bet_id'=>$bet->id,'type'=>'payout_reserved','amount_cents'=>$fixture['payout_cents'],'status'=>'posted','metadata'=>['demo_fixture'=>true]]);
         }
 
-        foreach ([['Camila R.','Junho · demonstração','O fluxo é leve e eu consigo conferir todas as minhas apostas sem perder o horário do sorteio.'],['Bruno M.','Maio · demonstração','Entrei em um bolão e gostei de ver as cotas, o valor e o status em uma tela só.'],['Lívia S.','Abril · demonstração','A experiência é simples até para escolher os números e finalizar o pedido.']] as [$name,$month,$quote]) Testimonial::updateOrCreate(['name'=>$name], ['month'=>$month,'quote'=>$quote,'is_demo'=>true,'active'=>true]);
+        foreach ([['Camila R.','Junho · demonstração','O fluxo é leve e eu consigo conferir todas as minhas apostas sem perder o horário do sorteio.'],['Bruno M.','Maio · demonstração','Entrei em um bolão e gostei de ver as cotas, o valor e o status em uma tela só.'],['Lívia S.','Abril · demonstração','A experiência é simples até para escolher os números e finalizar o pedido.']] as [$name,$month,$quote]) {
+            DB::table('testimonials')->updateOrInsert(['name'=>$name], ['month'=>$month,'quote'=>$quote,'is_demo'=>$boolean(true),'active'=>$boolean(true),'updated_at'=>$now,'created_at'=>$now]);
+        }
     }
 }
