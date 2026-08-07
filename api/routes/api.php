@@ -39,25 +39,6 @@ Route::get('cron/schedule', function (Request $request) {
     ]);
 });
 
-// One-time deployment hook. It is removed immediately after production
-// migrations are applied; it is never exposed to the application UI.
-Route::post('cron/migrate', function (Request $request) {
-    $secret = (string) env('CRON_SECRET');
-    $authorization = (string) $request->header('Authorization');
-
-    if ($secret === '' || ! hash_equals('Bearer '.$secret, $authorization)) {
-        return response()->json(['message' => 'Não autorizado.'], 401);
-    }
-
-    Artisan::call('migrate', ['--force' => true]);
-
-    return response()->json([
-        'ok' => true,
-        'ran_at' => now()->toIso8601String(),
-        'output' => trim(Artisan::output()),
-    ]);
-});
-
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('v1/me', [AuthController::class, 'me']);
     Route::get('v1/profile', [ProfileController::class, 'show']);
