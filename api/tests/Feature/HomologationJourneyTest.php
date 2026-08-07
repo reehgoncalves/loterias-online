@@ -94,6 +94,8 @@ class HomologationJourneyTest extends TestCase
             'email' => 'cliente-jornada-e2e@test.local',
             'password' => 'secret123',
             'password_confirmation' => 'secret123',
+            'age_confirmed' => true,
+            'terms_accepted' => true,
         ])->assertCreated();
         $customer = User::where('email', 'cliente-jornada-e2e@test.local')->firstOrFail();
         $this->assertSame('cus_homologation', $customer->stripe_customer_id);

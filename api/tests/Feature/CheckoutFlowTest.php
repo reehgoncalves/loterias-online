@@ -219,6 +219,8 @@ class CheckoutFlowTest extends TestCase
             'email' => 'cadastro-stripe-automatico@test.local',
             'password' => 'secret123',
             'password_confirmation' => 'secret123',
+            'age_confirmed' => true,
+            'terms_accepted' => true,
         ]);
 
         $response->assertCreated();

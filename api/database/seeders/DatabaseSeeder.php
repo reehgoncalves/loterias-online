@@ -21,8 +21,8 @@ class DatabaseSeeder extends Seeder
         $password = env('SEED_DEFAULT_PASSWORD', 'Loterias@2026!');
         $now = now();
         $boolean = static fn (bool $value) => DB::raw($value ? 'true' : 'false');
-        DB::table('users')->updateOrInsert(['email'=>'admin@loterias.online'], ['name'=>'Admin Loterias Online','password'=>Hash::make($password),'portal'=>'admin','is_admin'=>$boolean(true),'active'=>$boolean(true),'marketing_opt_in'=>$boolean(false),'email_verified_at'=>$now,'updated_at'=>$now,'created_at'=>$now]);
-        DB::table('users')->updateOrInsert(['email'=>'cliente@loterias.online'], ['name'=>'Cliente Demonstração','password'=>Hash::make($password),'portal'=>'cliente','is_admin'=>$boolean(false),'active'=>$boolean(true),'marketing_opt_in'=>$boolean(true),'email_verified_at'=>$now,'updated_at'=>$now,'created_at'=>$now]);
+        DB::table('users')->updateOrInsert(['email'=>'admin@loterias.online'], ['name'=>'Admin Loterias Online','password'=>Hash::make($password),'portal'=>'admin','is_admin'=>$boolean(true),'active'=>$boolean(true),'marketing_opt_in'=>$boolean(false),'email_verified_at'=>$now,'age_confirmed_at'=>$now,'terms_accepted_at'=>$now,'terms_version'=>config('legal.terms_version', 'v1.0'),'updated_at'=>$now,'created_at'=>$now]);
+        DB::table('users')->updateOrInsert(['email'=>'cliente@loterias.online'], ['name'=>'Cliente Demonstração','password'=>Hash::make($password),'portal'=>'cliente','is_admin'=>$boolean(false),'active'=>$boolean(true),'marketing_opt_in'=>$boolean(true),'email_verified_at'=>$now,'age_confirmed_at'=>$now,'terms_accepted_at'=>$now,'terms_version'=>config('legal.terms_version', 'v1.0'),'updated_at'=>$now,'created_at'=>$now]);
         $customer = User::where('email', 'cliente@loterias.online')->firstOrFail();
 
         $games = [

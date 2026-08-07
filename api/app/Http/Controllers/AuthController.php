@@ -19,8 +19,23 @@ class AuthController extends Controller
         return response()->json(['data'=>['access_token'=>$token,'profile'=>$this->profile($user)]]);
     }
     public function register(Request $request, StripeCustomerService $customers) {
-        $data = $request->validate(['name'=>'required|string|min:2|max:120','email'=>'required|email|max:160|unique:users,email','password'=>'required|string|min:8|confirmed']);
-        $user = User::create(['name'=>$data['name'],'email'=>strtolower($data['email']),'password'=>$data['password'],'portal'=>'cliente']);
+        $data = $request->validate([
+            'name'=>'required|string|min:2|max:120',
+            'email'=>'required|email|max:160|unique:users,email',
+            'password'=>'required|string|min:8|confirmed',
+            'age_confirmed'=>'accepted',
+            'terms_accepted'=>'accepted',
+        ]);
+        $acceptedAt = now();
+        $user = User::create([
+            'name'=>$data['name'],
+            'email'=>strtolower($data['email']),
+            'password'=>$data['password'],
+            'portal'=>'cliente',
+            'age_confirmed_at'=>$acceptedAt,
+            'terms_accepted_at'=>$acceptedAt,
+            'terms_version'=>config('legal.terms_version', 'v1.0'),
+        ]);
         try {
             $customers->ensure($user);
         } catch (RuntimeException $exception) {
@@ -32,5 +47,5 @@ class AuthController extends Controller
     }
     public function me(Request $request) { return response()->json(['data'=>$this->profile($request->user())]); }
     public function logout(Request $request) { $request->user()->currentAccessToken()?->delete(); return response()->json(['message'=>'Sessão encerrada.']); }
-    private function profile(User $user): array { return ['id'=>$user->id,'name'=>$user->name,'email'=>$user->email,'portal'=>$user->portal,'is_admin'=>$user->is_admin,'has_stripe_customer'=>(bool) $user->stripe_customer_id]; }
+    private function profile(User $user): array { return ['id'=>$user->id,'name'=>$user->name,'email'=>$user->email,'portal'=>$user->portal,'is_admin'=>$user->is_admin,'has_stripe_customer'=>(bool) $user->stripe_customer_id,'age_confirmed'=>(bool) $user->age_confirmed_at,'terms_accepted'=>(bool) $user->terms_accepted_at,'terms_version'=>$user->terms_version]; }
 }

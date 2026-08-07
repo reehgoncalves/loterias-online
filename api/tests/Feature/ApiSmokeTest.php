@@ -21,5 +21,14 @@ class ApiSmokeTest extends TestCase
         User::create(['name'=>'Cliente Teste','email'=>'cliente@test.local','password'=>Hash::make('secret'),'portal'=>'cliente','active'=>true]);
         $this->postJson('/api/auth/login', ['email'=>'cliente@test.local','password'=>'secret','portal'=>'cliente'])->assertOk()->assertJsonStructure(['data'=>['access_token','profile']]);
     }
-}
 
+    public function test_registration_requires_adult_confirmation_and_terms_acceptance(): void
+    {
+        $this->postJson('/api/auth/register', [
+            'name' => 'Cliente sem aceite',
+            'email' => 'sem-aceite@test.local',
+            'password' => 'secret123',
+            'password_confirmation' => 'secret123',
+        ])->assertStatus(422)->assertJsonValidationErrors(['age_confirmed', 'terms_accepted']);
+    }
+}
