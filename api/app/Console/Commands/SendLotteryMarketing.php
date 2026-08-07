@@ -8,6 +8,7 @@ use App\Models\EmailDelivery;
 use App\Models\MarketingCampaign;
 use App\Models\User;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
 
@@ -21,13 +22,13 @@ class SendLotteryMarketing extends Command
         $window = $this->option('window') === '2h' ? 2 : 24;
         $template = in_array($this->option('template'), ['draw-reminder', 'jackpot-alert', 'pool-highlight'], true) ? $this->option('template') : 'draw-reminder';
         $draws = Draw::query()->with('game')->where('status', 'open')->whereBetween('draw_at', [now(), now()->addHours($window)])->get();
-        $users = User::query()->where('active', true)->where('marketing_opt_in', true)->whereNull('marketing_opted_out_at')->whereNotNull('email_verified_at')->get();
+        $users = User::query()->where('active', DB::raw('true'))->where('marketing_opt_in', DB::raw('true'))->whereNull('marketing_opted_out_at')->whereNotNull('email_verified_at')->get();
         $queued = 0;
 
         foreach ($draws as $draw) {
             $campaign = MarketingCampaign::firstOrCreate(
                 ['slug' => "{$template}-draw-{$draw->id}-".now()->format('YmdH')],
-                ['template' => $template, 'subject' => $this->subject($draw->game->name, $template), 'window' => $window.'h', 'active' => true, 'scheduled_at' => now()],
+                ['template' => $template, 'subject' => $this->subject($draw->game->name, $template), 'window' => $window.'h', 'active' => DB::raw('true'), 'scheduled_at' => now()],
             );
             foreach ($users as $user) {
                 $key = "marketing-{$template}-{$draw->id}-{$user->id}";
@@ -75,4 +76,3 @@ class SendLotteryMarketing extends Command
         return $value ? 'R$ '.number_format((float) $value, 2, ',', '.') : 'Prêmio estimado no portal oficial';
     }
 }
-

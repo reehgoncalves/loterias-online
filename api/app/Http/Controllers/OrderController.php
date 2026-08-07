@@ -45,7 +45,7 @@ class OrderController extends Controller
 
             foreach ($data['tickets'] as $index => $ticket) {
                 $pool = ! empty($ticket['pool_id']) ? LotteryPool::query()->with(['game', 'draw'])->whereKey($ticket['pool_id'])->where('status', 'open')->lockForUpdate()->firstOrFail() : null;
-                $game = $pool?->game ?? LotteryGame::query()->whereKey($ticket['game_id'])->where('active', true)->firstOrFail();
+                $game = $pool?->game ?? LotteryGame::query()->whereKey($ticket['game_id'])->where('active', DB::raw('true'))->firstOrFail();
                 $draw = $pool?->draw ?? Draw::query()->whereKey($ticket['draw_id'])->where('lottery_game_id', $game->id)->where('status', 'open')->where('draw_at', '>', now())->firstOrFail();
                 $shares = max(1, (int) ($ticket['shares'] ?? 1));
                 if ($pool && $shares > ((int) $pool->total_shares - (int) $pool->sold_shares - (int) $pool->reserved_shares)) {

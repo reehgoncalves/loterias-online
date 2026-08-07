@@ -8,6 +8,7 @@ use App\Models\LotteryGame;
 use App\Models\LotteryPool;
 use App\Models\Payment;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class AdminController extends Controller
 {
@@ -21,6 +22,5 @@ class AdminController extends Controller
     public function bets() { return response()->json(['data'=>Bet::with(['user','game','draw'])->latest()->paginate(50)]); }
     public function payments() { return response()->json(['data'=>Payment::with('user')->latest()->paginate(50)]); }
     public function pools() { return response()->json(['data'=>LotteryPool::with(['game','draw'])->latest()->paginate(50)]); }
-    public function pauseGame(LotteryGame $game) { $game->update(['active'=>false]); return response()->json(['data'=>$game]); }
+    public function pauseGame(LotteryGame $game) { $game->update(['active'=>DB::raw('false')]); return response()->json(['data'=>$game]); }
 }
-

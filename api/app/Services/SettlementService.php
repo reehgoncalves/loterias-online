@@ -19,7 +19,7 @@ class SettlementService
             if ($draw->status === 'settled') return;
             $result = collect($draw->results['numbers'] ?? $draw->results ?? [])->map(fn ($n) => (int) $n)->all();
             if ($result === []) return;
-            foreach ($draw->bets()->where('is_pool_share', false)->where('payment_status', 'succeeded')->whereIn('status', ['paid', 'manual_review'])->lockForUpdate()->get() as $bet) {
+            foreach ($draw->bets()->where('is_pool_share', DB::raw('false'))->where('payment_status', 'succeeded')->whereIn('status', ['paid', 'manual_review'])->lockForUpdate()->get() as $bet) {
                 $matches = count(array_intersect($result, array_map('intval', $bet->numbers)));
                 $multiplier = (int) ($draw->game->payout_rules[(string) $matches] ?? 0);
                 $payout = min($bet->amount_cents * $multiplier, $draw->payout_cap_cents ?: PHP_INT_MAX, $draw->game->max_prize_cents ?: PHP_INT_MAX);

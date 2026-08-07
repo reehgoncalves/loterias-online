@@ -7,6 +7,7 @@ use App\Models\Draw;
 use App\Models\LotteryGame;
 use App\Services\CaixaResultsClient;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 class SyncLotteryResults extends Command
 {
@@ -14,7 +15,7 @@ class SyncLotteryResults extends Command
     protected $description = 'Sincroniza o último resultado publicado e agenda a liquidação idempotente.';
     public function handle(CaixaResultsClient $client): int {
         if (! filter_var(env('LOTTERY_SYNC_ENABLED', true), FILTER_VALIDATE_BOOL)) { $this->warn('Sincronização desabilitada.'); return self::SUCCESS; }
-        $games = LotteryGame::where('active',true)->when($this->option('game'),fn($q)=>$q->where('slug',$this->option('game')))->get();
+        $games = LotteryGame::where('active',DB::raw('true'))->when($this->option('game'),fn($q)=>$q->where('slug',$this->option('game')))->get();
         foreach ($games as $game) {
             try {
                 $result = $client->latest($game->slug);
@@ -26,4 +27,3 @@ class SyncLotteryResults extends Command
         return self::SUCCESS;
     }
 }
-

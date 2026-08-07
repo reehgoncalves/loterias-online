@@ -15,13 +15,13 @@ class BetController extends Controller
 {
     public function generateCoupons(Request $request, CouponGenerator $generator) {
         $data = $request->validate(['game_id' => 'required|integer', 'quantity' => 'nullable|integer|min:1|max:50']);
-        $game = LotteryGame::query()->whereKey($data['game_id'])->where('active', true)->firstOrFail();
+        $game = LotteryGame::query()->whereKey($data['game_id'])->where('active', DB::raw('true'))->firstOrFail();
         return response()->json(['data' => $generator->generateBatch($game, (int) ($data['quantity'] ?? 1)), 'meta' => ['game' => $game->only(['id', 'name', 'slug', 'numbers_required', 'number_min', 'range_max', 'selection_mode'])]]);
     }
 
     public function store(Request $request, RiskGuard $risk, CouponGenerator $generator) {
         $data = $request->validate(['game_id'=>'required|integer','draw_id'=>'required|integer','numbers'=>'required|array']);
-        $game = LotteryGame::query()->whereKey($data['game_id'])->where('active',true)->firstOrFail();
+        $game = LotteryGame::query()->whereKey($data['game_id'])->where('active',DB::raw('true'))->firstOrFail();
         $draw = Draw::query()->whereKey($data['draw_id'])->where('lottery_game_id',$game->id)->where('status','open')->where('draw_at','>',now())->first();
         if (! $draw) { $draw = Draw::query()->where('contest_number',$data['draw_id'])->where('lottery_game_id',$game->id)->where('status','open')->where('draw_at','>',now())->firstOrFail(); }
         $numbers = $generator->validate($game, $data['numbers']);
