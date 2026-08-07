@@ -5,7 +5,7 @@ import { ArrowRight, Banknote, BarChart3, CarFront, CheckCircle2, ChevronLeft, C
 
 type View = 'home' | 'games' | 'pools' | 'login' | 'admin' | 'profile';
 type Game = { id: number; slug: string; name: string; short_name: string; price_cents: number; color: string; range_max: number; number_min?: number; numbers_required: number; selection_mode?: string; special_options?: { columns?: number }; next_draw?: { id?: number; contest_number: number; draw_at: string } };
-type User = { id: number; name: string; email: string; portal: 'admin' | 'cliente' };
+type User = { id: number; name: string; email: string; portal: 'admin' | 'cliente'; is_admin?: boolean; has_stripe_customer?: boolean };
 type CartTicket = { id: string; game: Game; draw_id?: number; numbers: number[]; amount_cents: number; kind?: 'game' | 'pool'; pool_id?: number; shares?: number };
 type PoolCard = { id: number; slug: string; game: string; title: string; shares: string; price: number; draw_id?: number; color: string };
 type WalletData = { wallet: { id: number; currency: string; balance_cents: number; locked_cents: number; status: string }; transactions: Array<{ id: number; type: string; amount_cents: number; balance_after_cents: number; status: string; created_at: string }>; withdrawals: Array<{ id: number; amount_cents: number; method: string; status: string; review_note?: string; requested_at: string }> };
@@ -95,7 +95,7 @@ function shortDate(value?: string) { return value ? new Date(value).toLocaleDate
 function ticketSubtitle(ticket: CartTicket) { return `${ticket.kind === 'pool' ? '1 cota' : `Concurso ${ticket.game.next_draw?.contest_number ?? '—'}`} · ${ticket.numbers.map(number => String(number).padStart(2, '0')).join(' · ')}`; }
 function notify(message: string) { toast.value = message; window.setTimeout(() => { toast.value = ''; }, 3600); }
 function persistCart() { localStorage.setItem('lottery_cart', JSON.stringify(cart.value)); }
-function navigate(next: View) { view.value = next; mobileOpen.value = false; if (next === 'admin') loadAdmin(); if (next === 'profile' && user.value) loadWallet(); }
+function navigate(next: View) { view.value = next; mobileOpen.value = false; if (next === 'admin') loadAdmin(); if (next === 'profile' && user.value) { loadProfile(); loadWallet(); } }
 function gameIcon(game: Game) { return game.slug === 'mega-sena' ? Sparkles : game.slug === 'lotofacil' ? Ticket : game.slug === 'quina' ? CircleDollarSign : game.slug === 'timemania' ? Trophy : game.slug === 'dia-de-sorte' ? Banknote : game.slug === 'dupla-sena' ? WalletCards : game.slug === 'lotomania' ? Target : ShieldCheck; }
 function nextPromo() { activePromoIndex.value = (activePromoIndex.value + 1) % promoSlides.length; }
 function previousPromo() { activePromoIndex.value = (activePromoIndex.value - 1 + promoSlides.length) % promoSlides.length; }
@@ -128,7 +128,7 @@ async function submitRegister() {
   loading.value = true; loginError.value = '';
   try {
     const response = await api<{ data: { access_token: string; profile: User } }>('/api/auth/register', { method: 'POST', body: JSON.stringify({ name: customerName.value, email: email.value, password: password.value, password_confirmation: passwordConfirmation.value }) });
-    localStorage.setItem('lottery_token', response.data.access_token); user.value = response.data.profile; isLogin.value = false; navigate('games'); notify('Cadastro criado. Seu carrinho foi preservado.');
+    localStorage.setItem('lottery_token', response.data.access_token); user.value = response.data.profile; isLogin.value = false; navigate('games'); notify(response.data.profile.has_stripe_customer ? 'Cadastro criado e Customer Stripe sincronizado.' : 'Cadastro criado. O Stripe será sincronizado no primeiro pagamento.');
   } catch (error) { loginError.value = error instanceof Error ? error.message : 'Não foi possível criar seu cadastro.'; }
   finally { loading.value = false; }
 }
@@ -221,6 +221,12 @@ async function loadAdmin() {
     adminPayouts.value = payouts.data.data ?? [];
   }
   catch { adminData.value = { kpis: { revenue_cents: 3020000, payout_cents: 1240000, margin_cents: 1780000, active_bets: 1842 }, chart: fallbackChart, bets: [{ id: '#LO-10294', player: 'Mariana Costa', game: 'Mega-Sena', amount_cents: 500, status: 'paid' }, { id: '#LO-10293', player: 'Rafael Lima', game: 'Lotofácil', amount_cents: 350, status: 'won' }, { id: '#LO-10292', player: 'João Pedro', game: 'Quina', amount_cents: 300, status: 'pending' }] }; }
+}
+async function loadProfile() {
+  try {
+    const response = await api<{ data: { has_stripe_customer?: boolean } }>('/api/v1/profile');
+    if (user.value) user.value = { ...user.value, has_stripe_customer: response.data.has_stripe_customer };
+  } catch { /* mantém a tela utilizável durante uma indisponibilidade momentânea */ }
 }
 async function loadWallet() { if (!user.value) return; walletLoading.value = true; try { const response = await api<{ data: WalletData }>('/api/v1/wallet'); walletData.value = response.data; } catch { walletData.value = null; } finally { walletLoading.value = false; } }
 async function requestWithdrawal() {

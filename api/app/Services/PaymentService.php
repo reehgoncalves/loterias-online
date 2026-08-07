@@ -17,6 +17,8 @@ use RuntimeException;
 
 class PaymentService
 {
+    public function __construct(private StripeCustomerService $customers) {}
+
     public function checkout(Bet $bet, User $user, string $method): array
     {
         if (! in_array($method, ['card', 'pix'], true)) throw new RuntimeException('Método de pagamento não permitido. Boleto está temporariamente desativado.');
@@ -24,6 +26,7 @@ class PaymentService
         $payment = Payment::firstOrCreate(['idempotency_key' => 'checkout-'.$bet->id], ['user_id' => $user->id, 'bet_id' => $bet->id, 'provider' => 'stripe', 'method' => $method, 'amount_cents' => $bet->amount_cents, 'currency' => env('STRIPE_CURRENCY', 'brl'), 'status' => 'pending']);
         if ($payment->provider_checkout_id) return ['payment' => $payment, 'checkout_url' => $payment->raw_payload['url'] ?? null];
         if ($key === '') return ['payment' => $payment, 'checkout_url' => null, 'mode' => 'stripe_not_configured'];
+        $customerId = $this->customers->ensure($user);
 
         $params = [
             'mode' => 'payment', 'success_url' => env('STRIPE_SUCCESS_URL'), 'cancel_url' => env('STRIPE_CANCEL_URL'),
@@ -33,8 +36,19 @@ class PaymentService
             'client_reference_id' => (string) $bet->id, 'metadata[bet_id]' => (string) $bet->id, 'metadata[user_id]' => (string) $user->id,
             'payment_intent_data[metadata][bet_id]' => (string) $bet->id,
             'payment_intent_data[metadata][user_id]' => (string) $user->id,
+            'payment_intent_data[metadata][customer_id]' => (string) $customerId,
         ];
-        $response = Http::timeout((int) env('STRIPE_TIMEOUT_SECONDS', 15))->asForm()->withBasicAuth($key, '')->withHeaders(['Idempotency-Key' => 'stripe-checkout-'.$bet->id])->post('https://api.stripe.com/v1/checkout/sessions', $params);
+        if ($customerId) {
+            $params['customer'] = $customerId;
+            if ($method === 'card' && filter_var(env('STRIPE_SAVE_CARD', true), FILTER_VALIDATE_BOOL)) $params['payment_intent_data[setup_future_usage]'] = 'off_session';
+            $params['metadata[customer_id]'] = $customerId;
+        }
+        try {
+            $response = Http::timeout((int) env('STRIPE_TIMEOUT_SECONDS', 15))->asForm()->withBasicAuth($key, '')->withHeaders(['Idempotency-Key' => 'stripe-checkout-'.$bet->id])->post('https://api.stripe.com/v1/checkout/sessions', $params);
+        } catch (\Throwable $exception) {
+            $payment->update(['raw_payload' => ['stripe_error' => ['message' => 'stripe_unavailable']]]);
+            throw new RuntimeException('Stripe está indisponível no momento.', 0, $exception);
+        }
         if (! $response->successful()) {
             $payment->update(['raw_payload' => ['stripe_error' => $response->json('error', $response->json())]]);
             throw new RuntimeException('Stripe não criou o checkout: '.$response->json('error.message', 'erro desconhecido'));
@@ -58,6 +72,7 @@ class PaymentService
         ]);
         if ($payment->provider_checkout_id) return ['order' => $order->fresh(['items.game', 'items.draw']), 'payment' => $payment, 'checkout_url' => $payment->raw_payload['url'] ?? null];
         if ($key === '') return ['order' => $order->fresh(['items.game', 'items.draw']), 'payment' => $payment, 'checkout_url' => null, 'mode' => 'stripe_not_configured'];
+        $customerId = $this->customers->ensure($user);
 
         $params = [
             'mode' => 'payment', 'success_url' => env('STRIPE_SUCCESS_URL'), 'cancel_url' => env('STRIPE_CANCEL_URL'),
@@ -65,7 +80,13 @@ class PaymentService
             'metadata[order_id]' => (string) $order->id, 'metadata[user_id]' => (string) $user->id,
             'payment_intent_data[metadata][order_id]' => (string) $order->id,
             'payment_intent_data[metadata][user_id]' => (string) $user->id,
+            'payment_intent_data[metadata][customer_id]' => (string) $customerId,
         ];
+        if ($customerId) {
+            $params['customer'] = $customerId;
+            if ($method === 'card' && filter_var(env('STRIPE_SAVE_CARD', true), FILTER_VALIDATE_BOOL)) $params['payment_intent_data[setup_future_usage]'] = 'off_session';
+            $params['metadata[customer_id]'] = $customerId;
+        }
         foreach ($order->items()->with(['game', 'draw'])->get() as $index => $item) {
             $params["line_items[$index][price_data][currency]"] = env('STRIPE_CURRENCY', 'brl');
             $params["line_items[$index][price_data][product_data][name]"] = $item->game->name.' — concurso '.$item->draw->contest_number;
@@ -73,7 +94,12 @@ class PaymentService
             $params["line_items[$index][price_data][unit_amount]"] = $item->amount_cents;
             $params["line_items[$index][quantity]"] = 1;
         }
-        $response = Http::timeout((int) env('STRIPE_TIMEOUT_SECONDS', 15))->asForm()->withBasicAuth($key, '')->withHeaders(['Idempotency-Key' => 'stripe-order-'.$order->id])->post('https://api.stripe.com/v1/checkout/sessions', $params);
+        try {
+            $response = Http::timeout((int) env('STRIPE_TIMEOUT_SECONDS', 15))->asForm()->withBasicAuth($key, '')->withHeaders(['Idempotency-Key' => 'stripe-order-'.$order->id])->post('https://api.stripe.com/v1/checkout/sessions', $params);
+        } catch (\Throwable $exception) {
+            $payment->update(['raw_payload' => ['stripe_error' => ['message' => 'stripe_unavailable']]]);
+            throw new RuntimeException('Stripe está indisponível no momento.', 0, $exception);
+        }
         if (! $response->successful()) {
             $payment->update(['raw_payload' => ['stripe_error' => $response->json('error', $response->json())]]);
             throw new RuntimeException('Stripe não criou o checkout: '.$response->json('error.message', 'erro desconhecido'));

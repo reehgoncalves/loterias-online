@@ -77,13 +77,25 @@ class CheckoutFlowTest extends TestCase
         $order = Order::create(['user_id' => $customer->id, 'total_cents' => 100, 'currency' => 'brl', 'status' => 'awaiting_payment', 'payment_status' => 'pending', 'idempotency_key' => 'stripe-session-test']);
         $order->items()->create(['lottery_game_id' => $game->id, 'draw_id' => $draw->id, 'numbers' => [1, 2, 3, 4, 5, 6], 'amount_cents' => 100, 'shares' => 1, 'potential_prize_cents' => 100]);
         Env::getRepository()->set('STRIPE_SECRET_KEY', 'sk_test_fake');
-        Http::fake(['https://api.stripe.com/v1/checkout/sessions' => Http::response(['id' => 'cs_test_flow', 'url' => 'https://checkout.stripe.test/cs_test_flow'], 200)]);
+        Http::fake([
+            'https://api.stripe.com/v1/customers' => Http::response(['id' => 'cus_test_flow'], 200),
+            'https://api.stripe.com/v1/checkout/sessions' => Http::response(['id' => 'cs_test_flow', 'url' => 'https://checkout.stripe.test/cs_test_flow'], 200),
+        ]);
 
         $result = app(PaymentService::class)->checkoutOrder($order, $customer, 'card');
 
         $this->assertSame('https://checkout.stripe.test/cs_test_flow', $result['checkout_url']);
         $this->assertDatabaseHas('payments', ['order_id' => $order->id, 'provider_checkout_id' => 'cs_test_flow', 'method' => 'card']);
+        $this->assertDatabaseHas('users', ['id' => $customer->id, 'stripe_customer_id' => 'cus_test_flow']);
         Http::assertSent(fn (HttpRequest $request) => str_contains((string) $request->body(), 'payment_method_types%5B0%5D=card'));
+        Http::assertSent(function (HttpRequest $request) use ($customer): bool {
+            if (! str_contains($request->url(), '/v1/checkout/sessions')) return false;
+            parse_str((string) $request->body(), $data);
+            return ($data['customer'] ?? null) === 'cus_test_flow'
+                && ($data['payment_intent_data']['setup_future_usage'] ?? null) === 'off_session'
+                && ($data['payment_intent_data']['metadata']['customer_id'] ?? null) === 'cus_test_flow'
+                && ($data['metadata']['user_id'] ?? null) === (string) $customer->id;
+        });
     }
 
     public function test_stripe_checkout_session_is_created_with_pix_and_payment_intent_metadata(): void
@@ -92,7 +104,10 @@ class CheckoutFlowTest extends TestCase
         $order = Order::create(['user_id' => $customer->id, 'total_cents' => 100, 'currency' => 'brl', 'status' => 'awaiting_payment', 'payment_status' => 'pending', 'idempotency_key' => 'stripe-pix-session-test']);
         $order->items()->create(['lottery_game_id' => $game->id, 'draw_id' => $draw->id, 'numbers' => [1, 2, 3, 4, 5, 6], 'amount_cents' => 100, 'shares' => 1, 'potential_prize_cents' => 100]);
         Env::getRepository()->set('STRIPE_SECRET_KEY', 'sk_test_fake');
-        Http::fake(['https://api.stripe.com/v1/checkout/sessions' => Http::response(['id' => 'cs_test_pix', 'url' => 'https://checkout.stripe.test/cs_test_pix'], 200)]);
+        Http::fake([
+            'https://api.stripe.com/v1/customers' => Http::response(['id' => 'cus_test_pix'], 200),
+            'https://api.stripe.com/v1/checkout/sessions' => Http::response(['id' => 'cs_test_pix', 'url' => 'https://checkout.stripe.test/cs_test_pix'], 200),
+        ]);
 
         app(PaymentService::class)->checkoutOrder($order, $customer, 'pix');
 
@@ -109,7 +124,10 @@ class CheckoutFlowTest extends TestCase
         $order = Order::create(['user_id' => $customer->id, 'total_cents' => 100, 'currency' => 'brl', 'status' => 'awaiting_payment', 'payment_status' => 'pending', 'idempotency_key' => 'stripe-error-test']);
         $order->items()->create(['lottery_game_id' => $game->id, 'draw_id' => $draw->id, 'numbers' => [1, 2, 3, 4, 5, 6], 'amount_cents' => 100, 'shares' => 1, 'potential_prize_cents' => 100]);
         Env::getRepository()->set('STRIPE_SECRET_KEY', 'sk_test_fake');
-        Http::fake(['https://api.stripe.com/v1/checkout/sessions' => Http::response(['error' => ['message' => 'Cartão de teste recusado.']], 402)]);
+        Http::fake([
+            'https://api.stripe.com/v1/customers' => Http::response(['id' => 'cus_test_error'], 200),
+            'https://api.stripe.com/v1/checkout/sessions' => Http::response(['error' => ['message' => 'Cartão de teste recusado.']], 402),
+        ]);
 
         $this->expectExceptionMessage('Cartão de teste recusado.');
         try {
@@ -126,7 +144,10 @@ class CheckoutFlowTest extends TestCase
         $order = Order::create(['user_id' => $customer->id, 'total_cents' => 100, 'currency' => 'brl', 'status' => 'awaiting_payment', 'payment_status' => 'pending', 'idempotency_key' => 'stripe-incomplete-test']);
         $order->items()->create(['lottery_game_id' => $game->id, 'draw_id' => $draw->id, 'numbers' => [1, 2, 3, 4, 5, 6], 'amount_cents' => 100, 'shares' => 1, 'potential_prize_cents' => 100]);
         Env::getRepository()->set('STRIPE_SECRET_KEY', 'sk_test_fake');
-        Http::fake(['https://api.stripe.com/v1/checkout/sessions' => Http::response(['id' => 'cs_missing_url'], 200)]);
+        Http::fake([
+            'https://api.stripe.com/v1/customers' => Http::response(['id' => 'cus_test_incomplete'], 200),
+            'https://api.stripe.com/v1/checkout/sessions' => Http::response(['id' => 'cs_missing_url'], 200),
+        ]);
 
         $this->expectExceptionMessage('checkout incompleto');
         try {
@@ -141,7 +162,10 @@ class CheckoutFlowTest extends TestCase
         [$customer, $game, $draw] = $this->fixture();
         $bet = Bet::create(['user_id' => $customer->id, 'lottery_game_id' => $game->id, 'draw_id' => $draw->id, 'numbers' => [1, 2, 3, 4, 5, 6], 'amount_cents' => 100, 'potential_prize_cents' => 100, 'status' => 'awaiting_payment', 'payment_status' => 'pending', 'is_pool_share' => false, 'idempotency_key' => 'legacy-bet-checkout-1']);
         Env::getRepository()->set('STRIPE_SECRET_KEY', 'sk_test_fake');
-        Http::fake(['https://api.stripe.com/v1/checkout/sessions' => Http::response(['id' => 'cs_legacy_pix', 'url' => 'https://checkout.stripe.test/cs_legacy_pix'], 200)]);
+        Http::fake([
+            'https://api.stripe.com/v1/customers' => Http::response(['id' => 'cus_test_legacy'], 200),
+            'https://api.stripe.com/v1/checkout/sessions' => Http::response(['id' => 'cs_legacy_pix', 'url' => 'https://checkout.stripe.test/cs_legacy_pix'], 200),
+        ]);
 
         $this->actingAs($customer, 'sanctum')->postJson('/api/v1/payments/checkout', ['bet_id' => $bet->id, 'method' => 'pix'])
             ->assertOk()->assertJsonPath('data.checkout_url', 'https://checkout.stripe.test/cs_legacy_pix');
@@ -160,6 +184,22 @@ class CheckoutFlowTest extends TestCase
         $this->actingAs($customer, 'sanctum')->postJson('/api/v1/profile/billing-portal')
             ->assertOk()->assertJsonPath('data.url', 'https://billing.stripe.test/session');
         $this->assertDatabaseHas('users', ['id' => $customer->id, 'stripe_customer_id' => 'cus_test_checkout']);
+    }
+
+    public function test_customer_registration_provisions_the_stripe_customer_automatically(): void
+    {
+        Env::getRepository()->set('STRIPE_SECRET_KEY', 'sk_test_fake');
+        Http::fake(['https://api.stripe.com/v1/customers' => Http::response(['id' => 'cus_registered_test'], 200)]);
+
+        $response = $this->postJson('/api/auth/register', [
+            'name' => 'Cadastro Stripe Automático',
+            'email' => 'cadastro-stripe-automatico@test.local',
+            'password' => 'secret123',
+            'password_confirmation' => 'secret123',
+        ]);
+
+        $response->assertCreated();
+        $this->assertDatabaseHas('users', ['email' => 'cadastro-stripe-automatico@test.local', 'stripe_customer_id' => 'cus_registered_test']);
     }
 
     public function test_payment_webhook_marks_an_order_paid_only_once(): void
