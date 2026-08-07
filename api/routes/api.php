@@ -8,6 +8,7 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\StripeWebhookController;
+use App\Http\Controllers\WalletController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('v1/catalog', [CatalogController::class, 'index']);
@@ -26,11 +27,17 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('v1/bets', [BetController::class, 'store']);
     Route::post('v1/payments/checkout', [PaymentController::class, 'checkout']);
     Route::post('v1/orders/checkout', [OrderController::class, 'checkout']);
+    Route::get('v1/wallet', [WalletController::class, 'show']);
+    Route::post('v1/wallet/withdrawals', [WalletController::class, 'withdraw']);
     Route::middleware('can:admin')->prefix('v1/admin')->group(function () {
         Route::get('dashboard', [AdminController::class, 'dashboard']);
         Route::get('bets', [AdminController::class, 'bets']);
         Route::get('payments', [AdminController::class, 'payments']);
         Route::get('pools', [AdminController::class, 'pools']);
+        Route::get('wallet-withdrawals', [AdminController::class, 'walletWithdrawals']);
+        Route::post('wallet-withdrawals/{withdrawal}/review', [AdminController::class, 'reviewWithdrawal']);
+        Route::get('payouts', [AdminController::class, 'payouts']);
+        Route::post('payouts/{payout}/approve', [AdminController::class, 'approvePayout']);
         Route::post('games/{game}/pause', [AdminController::class, 'pauseGame']);
     });
 });
