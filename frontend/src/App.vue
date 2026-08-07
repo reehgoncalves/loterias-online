@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { api } from './services/api';
-import { ArrowRight, Banknote, BarChart3, CarFront, CheckCircle2, ChevronRight, CircleDollarSign, Clock3, CreditCard, Heart, House, Menu, Plus, ShieldCheck, ShoppingCart, Sparkles, Target, Ticket, Trash2, Trophy, UserRound, WalletCards, X } from 'lucide-vue-next';
+import { ArrowRight, Banknote, BarChart3, CarFront, CheckCircle2, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, CreditCard, Heart, House, Menu, Plus, ShieldCheck, ShoppingCart, Sparkles, Target, Ticket, Trash2, Trophy, UserRound, WalletCards, X } from 'lucide-vue-next';
 
 type View = 'home' | 'games' | 'pools' | 'login' | 'admin' | 'profile';
 type Game = { id: number; slug: string; name: string; short_name: string; price_cents: number; color: string; range_max: number; number_min?: number; numbers_required: number; selection_mode?: string; special_options?: { columns?: number }; next_draw?: { id?: number; contest_number: number; draw_at: string } };
@@ -32,6 +32,9 @@ const cart = ref<CartTicket[]>([]);
 const accountLoading = ref(false);
 const paymentMethod = ref<'card' | 'pix'>('card');
 const checkoutFeedback = ref('');
+const activePromoIndex = ref(0);
+const promoPaused = ref(false);
+let promoTimer: number | undefined;
 
 const demoCatalog: Game[] = [
   { id: 1, slug: 'mega-sena', name: 'Mega-Sena', short_name: 'MEGA', price_cents: 500, color: '#31b8b2', range_max: 60, numbers_required: 6, next_draw: { contest_number: 2910, draw_at: '2026-08-08T20:00:00-03:00' } },
@@ -45,6 +48,12 @@ const demoCatalog: Game[] = [
 ];
 
 const gameGroups = ['Todos', 'Mais jogados', 'Menor preço', 'Bolões'];
+const promoSlides = [
+  { key: 'mega', tone: 'mega', eyebrow: 'Bolão em destaque', title: 'Mega-Sena acumulada', amount: 'R$ 100 mi', description: 'Entre no próximo concurso com combinações selecionadas e participe por uma fração do valor.', highlight: 'Até 20% OFF', chip: 'cotas limitadas', icon: Sparkles },
+  { key: 'easy', tone: 'easy', eyebrow: 'Oferta da semana', title: 'Lotofácil para jogar junto', amount: 'R$ 7,90', description: 'Escolha sua cota, acompanhe as combinações do bolão e receba o cupom no seu e-mail.', highlight: 'a partir de R$ 7,90', chip: 'bolão aberto', icon: Ticket },
+  { key: 'quina', tone: 'quina', eyebrow: 'Mais chances de combinar', title: 'Quina Turbo', amount: 'R$ 9,50', description: 'Uma experiência prática para entrar no bolão e conferir o status de cada cota em um só lugar.', highlight: 'compra segura', chip: 'resultado oficial', icon: Trophy },
+];
+const activePromo = computed(() => promoSlides[activePromoIndex.value]);
 const gamesToShow = computed(() => {
   if (selectedFilter.value === 'Mais jogados') return catalog.value.slice(0, 4);
   if (selectedFilter.value === 'Menor preço') return [...catalog.value].sort((a, b) => a.price_cents - b.price_cents);
@@ -80,6 +89,9 @@ function notify(message: string) { toast.value = message; window.setTimeout(() =
 function persistCart() { localStorage.setItem('lottery_cart', JSON.stringify(cart.value)); }
 function navigate(next: View) { view.value = next; mobileOpen.value = false; if (next === 'admin') loadAdmin(); }
 function gameIcon(game: Game) { return game.slug === 'mega-sena' ? Sparkles : game.slug === 'lotofacil' ? Ticket : game.slug === 'quina' ? CircleDollarSign : game.slug === 'timemania' ? Trophy : game.slug === 'dia-de-sorte' ? Banknote : game.slug === 'dupla-sena' ? WalletCards : game.slug === 'lotomania' ? Target : ShieldCheck; }
+function nextPromo() { activePromoIndex.value = (activePromoIndex.value + 1) % promoSlides.length; }
+function previousPromo() { activePromoIndex.value = (activePromoIndex.value - 1 + promoSlides.length) % promoSlides.length; }
+function selectPromo(index: number) { activePromoIndex.value = index; }
 
 async function loadCatalog() {
   try {
@@ -198,7 +210,8 @@ async function loadAdmin() {
   catch { adminData.value = { kpis: { revenue_cents: 3020000, payout_cents: 1240000, margin_cents: 1780000, active_bets: 1842 }, chart: fallbackChart, bets: [{ id: '#LO-10294', player: 'Mariana Costa', game: 'Mega-Sena', amount_cents: 500, status: 'paid' }, { id: '#LO-10293', player: 'Rafael Lima', game: 'Lotofácil', amount_cents: 350, status: 'won' }, { id: '#LO-10292', player: 'João Pedro', game: 'Quina', amount_cents: 300, status: 'pending' }] }; }
 }
 function showAdmin() { if (user.value?.portal === 'admin') navigate('admin'); else openLogin('admin'); }
-onMounted(async () => { await loadCatalog(); try { const saved = JSON.parse(localStorage.getItem('lottery_cart') || '[]'); if (Array.isArray(saved)) cart.value = saved; } catch { cart.value = []; } if (localStorage.getItem('lottery_token')) { try { const response = await api<{ data: User }>('/api/v1/me'); user.value = response.data; } catch { localStorage.removeItem('lottery_token'); } } });
+onMounted(async () => { promoTimer = window.setInterval(() => { if (!promoPaused.value) nextPromo(); }, 5200); await loadCatalog(); try { const saved = JSON.parse(localStorage.getItem('lottery_cart') || '[]'); if (Array.isArray(saved)) cart.value = saved; } catch { cart.value = []; } if (localStorage.getItem('lottery_token')) { try { const response = await api<{ data: User }>('/api/v1/me'); user.value = response.data; } catch { localStorage.removeItem('lottery_token'); } } });
+onBeforeUnmount(() => { if (promoTimer) window.clearInterval(promoTimer); });
 </script>
 
 <template>
@@ -228,6 +241,17 @@ onMounted(async () => { await loadCatalog(); try { const saved = JSON.parse(loca
       <section class="hero">
         <div class="hero-copy"><div class="eyebrow">Prêmio acumulado em destaque</div><h1>R$ 100 milhões podem mudar o seu próximo capítulo.</h1><p>Escolha seus números, participe de bolões inteligentes e acompanhe tudo em um só lugar — com transparência em cada etapa.</p><button class="btn btn-yellow" @click="navigate('games')">Escolher meu jogo <ArrowRight :size="16" /></button><small class="hero-note">*Campanha visual demonstrativa. Confira o valor oficial do concurso antes de apostar.</small></div>
         <div class="hero-badge"><div><strong>R$ 100 mi</strong>em destaque*</div></div>
+      </section>
+      <section class="promo-carousel" aria-label="Promoções de bolões" @mouseenter="promoPaused = true" @mouseleave="promoPaused = false">
+        <div class="promo-stage">
+          <Transition name="promo-fade" mode="out-in">
+            <article :key="activePromo.key" class="promo-banner" :class="`promo-${activePromo.tone}`">
+              <div class="promo-copy"><div class="promo-eyebrow"><span class="promo-live-dot"></span>{{ activePromo.eyebrow }}</div><h2>{{ activePromo.title }}</h2><p>{{ activePromo.description }}</p><div class="promo-benefit"><strong>{{ activePromo.highlight }}</strong><span>• {{ activePromo.chip }}</span></div><button class="btn btn-yellow" @click="navigate('pools')">Ver bolões <ArrowRight :size="16" /></button></div>
+              <div class="promo-art" aria-hidden="true"><div class="promo-glow"></div><div class="promo-orb promo-orb-one"></div><div class="promo-orb promo-orb-two"></div><div class="promo-ticket"><component :is="activePromo.icon" :size="28" /></div><div class="promo-amount">{{ activePromo.amount }}</div><div class="promo-art-caption">prêmio em destaque*</div></div>
+            </article>
+          </Transition>
+        </div>
+        <div class="promo-controls"><button class="promo-arrow" aria-label="Promoção anterior" @click="previousPromo"><ChevronLeft :size="17" /></button><div class="promo-dots"><button v-for="(promo, index) in promoSlides" :key="promo.key" class="promo-dot" :class="{ active: activePromoIndex === index }" :aria-label="`Ver promoção ${index + 1}`" @click="selectPromo(index)"></button></div><button class="promo-arrow" aria-label="Próxima promoção" @click="nextPromo"><ChevronRight :size="17" /></button><span class="promo-counter">{{ activePromoIndex + 1 }} / {{ promoSlides.length }}</span></div>
       </section>
       <div class="section-head"><div><h2>Escolha sua sorte</h2><p>Jogos oficiais, simples de apostar e fáceis de acompanhar.</p></div><button class="link" @click="navigate('games')">Ver todos <ChevronRight :size="14" /></button></div>
       <section class="games"><article v-for="game in catalog.slice(0, 4)" :key="game.id" class="game-card" :style="{ '--game-color': game.color }" @click="chooseGame(game)"><div class="game-top"><div class="game-logo"><component :is="gameIcon(game)" :size="21" /></div><button class="favorite" @click.stop="notify('Jogo salvo nos favoritos.')"><Heart :size="15" /></button></div><h3>{{ game.name }}</h3><div class="sub">Concurso {{ game.next_draw?.contest_number ?? '—' }} · {{ shortDate(game.next_draw?.draw_at) }}</div><div class="game-bottom"><div class="game-price">{{ money(game.price_cents) }}</div><div class="game-draw">aposta mínima<br /><strong>prêmio estimado</strong></div></div></article></section>
