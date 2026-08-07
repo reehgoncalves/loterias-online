@@ -19,13 +19,18 @@ class RiskGuard
 
     public function assertCanAccept(LotteryGame $game, Draw $draw, int $amountCents): void
     {
+        $this->assertCanAcceptWithExtraExposure($game, $draw, $amountCents, 0);
+    }
+
+    public function assertCanAcceptWithExtraExposure(LotteryGame $game, Draw $draw, int $amountCents, int $extraExposureCents): void
+    {
         if ($amountCents <= 0 || $amountCents > (int) config('lottery.risk.max_bet_cents', env('RISK_MAX_BET_CENTS', 100000))) {
             throw ValidationException::withMessages(['amount' => 'Valor de aposta fora do limite configurado.']);
         }
 
         $eligibleCash = $this->eligibleCash();
         $currentExposure = (int) Bet::query()->where('draw_id', $draw->id)->whereIn('status', ['awaiting_payment', 'paid', 'manual_review'])->sum('potential_prize_cents');
-        $newExposure = $currentExposure + $this->potentialPrize($game, $amountCents);
+        $newExposure = $currentExposure + max(0, $extraExposureCents) + $this->potentialPrize($game, $amountCents);
         $minReserve = (int) env('RISK_MIN_RESERVE_CENTS', 100000);
         $ratio = min(0.70, max(0, (float) env('RISK_PAYOUT_RATIO', 0.70)));
         $safety = min(1, max(0, (float) env('RISK_SAFETY_RATIO', 0.80)));
@@ -48,4 +53,3 @@ class RiskGuard
             - (int) LedgerEntry::query()->where('status', 'posted')->whereIn('type', ['payout_reserved', 'payout_sent', 'refund_sent', 'chargeback'])->sum('amount_cents'));
     }
 }
-

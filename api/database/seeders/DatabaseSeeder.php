@@ -18,8 +18,8 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $password = env('SEED_DEFAULT_PASSWORD', 'Loterias@2026!');
-        $admin = User::updateOrCreate(['email'=>'admin@loterias.online'], ['name'=>'Admin Loterias Online','password'=>Hash::make($password),'portal'=>'admin','is_admin'=>true,'active'=>true,'email_verified_at'=>now()]);
-        $customer = User::updateOrCreate(['email'=>'cliente@loterias.online'], ['name'=>'Cliente Demonstração','password'=>Hash::make($password),'portal'=>'cliente','is_admin'=>false,'active'=>true,'email_verified_at'=>now()]);
+        $admin = User::updateOrCreate(['email'=>'admin@loterias.online'], ['name'=>'Admin Loterias Online','password'=>Hash::make($password),'portal'=>'admin','is_admin'=>true,'active'=>true,'marketing_opt_in'=>false,'email_verified_at'=>now()]);
+        $customer = User::updateOrCreate(['email'=>'cliente@loterias.online'], ['name'=>'Cliente Demonstração','password'=>Hash::make($password),'portal'=>'cliente','is_admin'=>false,'active'=>true,'marketing_opt_in'=>true,'email_verified_at'=>now()]);
 
         $games = [
             ['slug'=>'mega-sena','name'=>'Mega-Sena','short_name'=>'MEGA','color'=>'#31b8b2','price_cents'=>500,'numbers_required'=>6,'range_max'=>60,'payout_rules'=>['4'=>20,'5'=>100,'6'=>1000],'max_prize_cents'=>50000000],
@@ -28,8 +28,8 @@ class DatabaseSeeder extends Seeder
             ['slug'=>'timemania','name'=>'Timemania','short_name'=>'TIME','color'=>'#f05295','price_cents'=>350,'numbers_required'=>10,'range_max'=>80,'payout_rules'=>['3'=>2,'4'=>8,'5'=>40,'6'=>250,'7'=>1000],'max_prize_cents'=>10000000],
             ['slug'=>'dia-de-sorte','name'=>'Dia de Sorte','short_name'=>'DIA','color'=>'#f1b833','price_cents'=>250,'numbers_required'=>7,'range_max'=>31,'payout_rules'=>['4'=>3,'5'=>12,'6'=>75,'7'=>600],'max_prize_cents'=>5000000],
             ['slug'=>'dupla-sena','name'=>'Dupla Sena','short_name'=>'DUPLA','color'=>'#3d8de5','price_cents'=>300,'numbers_required'=>6,'range_max'=>50,'payout_rules'=>['3'=>3,'4'=>15,'5'=>100,'6'=>800],'max_prize_cents'=>10000000],
-            ['slug'=>'lotomania','name'=>'Lotomania','short_name'=>'LOTO','color'=>'#e061b7','price_cents'=>300,'numbers_required'=>20,'range_max'=>100,'payout_rules'=>['0'=>20,'15'=>10,'16'=>20,'17'=>60,'18'=>300,'19'=>2000,'20'=>10000],'max_prize_cents'=>30000000],
-            ['slug'=>'super-sete','name'=>'Super Sete','short_name'=>'7','color'=>'#41a86d','price_cents'=>300,'numbers_required'=>7,'range_max'=>9,'payout_rules'=>['3'=>3,'4'=>15,'5'=>100,'6'=>800,'7'=>5000],'max_prize_cents'=>20000000],
+            ['slug'=>'lotomania','name'=>'Lotomania','short_name'=>'LOTO','color'=>'#e061b7','price_cents'=>300,'numbers_required'=>20,'range_max'=>99,'number_min'=>0,'payout_rules'=>['0'=>20,'15'=>10,'16'=>20,'17'=>60,'18'=>300,'19'=>2000,'20'=>10000],'max_prize_cents'=>30000000],
+            ['slug'=>'super-sete','name'=>'Super Sete','short_name'=>'7','color'=>'#41a86d','price_cents'=>300,'numbers_required'=>7,'range_max'=>9,'number_min'=>0,'allow_repeated_numbers'=>true,'selection_mode'=>'columns','special_options'=>['columns'=>7],'payout_rules'=>['3'=>3,'4'=>15,'5'=>100,'6'=>800,'7'=>5000],'max_prize_cents'=>20000000],
         ];
         foreach ($games as $index => $payload) {
             $game = LotteryGame::updateOrCreate(['slug'=>$payload['slug']], $payload);
