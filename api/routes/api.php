@@ -9,6 +9,8 @@ use App\Http\Controllers\OrderController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\StripeWebhookController;
 use App\Http\Controllers\WalletController;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
 
 Route::get('v1/catalog', [CatalogController::class, 'index']);
@@ -17,6 +19,25 @@ Route::get('v1/testimonials', [CatalogController::class, 'testimonials']);
 Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttle:auth');
 Route::post('auth/register', [AuthController::class, 'register'])->middleware('throttle:auth');
 Route::post('stripe/webhook', StripeWebhookController::class);
+
+// Vercel invokes this endpoint from its Cron integration. Keep the scheduler
+// behind a secret so it cannot be used as a public command runner.
+Route::get('cron/schedule', function (Request $request) {
+    $secret = (string) env('CRON_SECRET');
+    $authorization = (string) $request->header('Authorization');
+
+    if ($secret === '' || ! hash_equals('Bearer '.$secret, $authorization)) {
+        return response()->json(['message' => 'Não autorizado.'], 401);
+    }
+
+    Artisan::call('schedule:run');
+
+    return response()->json([
+        'ok' => true,
+        'ran_at' => now()->toIso8601String(),
+        'output' => trim(Artisan::output()),
+    ]);
+});
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('v1/me', [AuthController::class, 'me']);
