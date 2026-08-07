@@ -1,0 +1,17 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+frontend/node_modules/
+frontend/dist/
+api/vendor/
+api/.phpunit.result.cache
+api/storage/*.key
+api/database/*.sqlite
+api/storage/framework/cache/data/*
+api/storage/framework/sessions/*
+api/storage/framework/views/*
+api/storage/logs/*.log
+/.vercel/

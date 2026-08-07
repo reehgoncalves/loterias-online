@@ -1,0 +1,10 @@
+services:
+  api:
+    image: php:8.3-cli
+    working_dir: /var/www/api
+    volumes:
+      - ./api:/var/www/api
+    ports:
+      - "8000:8000"
+    command: sh -lc "php -S 0.0.0.0:8000 -t public public/index.php"
+
