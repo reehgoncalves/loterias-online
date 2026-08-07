@@ -109,7 +109,11 @@ class OrderController extends Controller
             return response()->json(['message' => collect($errors)->flatten()->first() ?? 'Pedido recusado pelas regras da operação.', 'errors' => $errors], 422);
         }
 
-        $checkout = $payments->checkoutOrder($order, $request->user(), $data['method']);
+        try {
+            $checkout = $payments->checkoutOrder($order, $request->user(), $data['method']);
+        } catch (\RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage(), 'data' => ['order' => $order->fresh(['items.game', 'items.draw']), 'payment' => $order->payments()->latest()->first()]], 502);
+        }
         return response()->json(['data' => ['order' => $checkout['order'] ?? $order->fresh(['items.game', 'items.draw']), 'payment' => $checkout['payment'], 'checkout_url' => $checkout['checkout_url'] ?? null, 'mode' => $checkout['mode'] ?? null]], 201);
     }
 }

@@ -11,6 +11,10 @@ class PaymentController extends Controller
     public function checkout(Request $request, PaymentService $payments) {
         $data = $request->validate(['bet_id'=>'required|integer','method'=>'required|in:card,pix']);
         $bet = Bet::with(['game','draw'])->where('id',$data['bet_id'])->where('user_id',$request->user()->id)->where('status','awaiting_payment')->firstOrFail();
-        return response()->json(['data'=>$payments->checkout($bet,$request->user(),$data['method'])]);
+        try {
+            return response()->json(['data'=>$payments->checkout($bet,$request->user(),$data['method'])]);
+        } catch (\RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 502);
+        }
     }
 }

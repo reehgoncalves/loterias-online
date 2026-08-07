@@ -31,10 +31,19 @@ class PaymentService
             'line_items[0][price_data][product_data][name]' => $bet->game->name.' — concurso '.$bet->draw->contest_number,
             'line_items[0][price_data][unit_amount]' => $bet->amount_cents, 'line_items[0][quantity]' => 1,
             'client_reference_id' => (string) $bet->id, 'metadata[bet_id]' => (string) $bet->id, 'metadata[user_id]' => (string) $user->id,
+            'payment_intent_data[metadata][bet_id]' => (string) $bet->id,
+            'payment_intent_data[metadata][user_id]' => (string) $user->id,
         ];
-        $response = Http::asForm()->withBasicAuth($key, '')->withHeaders(['Idempotency-Key' => 'stripe-checkout-'.$bet->id])->post('https://api.stripe.com/v1/checkout/sessions', $params);
-        if (! $response->successful()) throw new RuntimeException('Stripe não criou o checkout: '.$response->json('error.message', 'erro desconhecido'));
+        $response = Http::timeout((int) env('STRIPE_TIMEOUT_SECONDS', 15))->asForm()->withBasicAuth($key, '')->withHeaders(['Idempotency-Key' => 'stripe-checkout-'.$bet->id])->post('https://api.stripe.com/v1/checkout/sessions', $params);
+        if (! $response->successful()) {
+            $payment->update(['raw_payload' => ['stripe_error' => $response->json('error', $response->json())]]);
+            throw new RuntimeException('Stripe não criou o checkout: '.$response->json('error.message', 'erro desconhecido'));
+        }
         $payload = $response->json();
+        if (! is_array($payload) || empty($payload['id']) || empty($payload['url'])) {
+            $payment->update(['raw_payload' => ['stripe_error' => ['message' => 'checkout_incomplete', 'payload' => $payload]]]);
+            throw new RuntimeException('Stripe retornou um checkout incompleto.');
+        }
         $payment->update(['provider_checkout_id' => $payload['id'] ?? null, 'raw_payload' => $payload]);
         return ['payment' => $payment->fresh(), 'checkout_url' => $payload['url'] ?? null];
     }
@@ -54,6 +63,8 @@ class PaymentService
             'mode' => 'payment', 'success_url' => env('STRIPE_SUCCESS_URL'), 'cancel_url' => env('STRIPE_CANCEL_URL'),
             'payment_method_types[0]' => $method, 'client_reference_id' => 'order-'.$order->id,
             'metadata[order_id]' => (string) $order->id, 'metadata[user_id]' => (string) $user->id,
+            'payment_intent_data[metadata][order_id]' => (string) $order->id,
+            'payment_intent_data[metadata][user_id]' => (string) $user->id,
         ];
         foreach ($order->items()->with(['game', 'draw'])->get() as $index => $item) {
             $params["line_items[$index][price_data][currency]"] = env('STRIPE_CURRENCY', 'brl');
@@ -62,9 +73,16 @@ class PaymentService
             $params["line_items[$index][price_data][unit_amount]"] = $item->amount_cents;
             $params["line_items[$index][quantity]"] = 1;
         }
-        $response = Http::asForm()->withBasicAuth($key, '')->withHeaders(['Idempotency-Key' => 'stripe-order-'.$order->id])->post('https://api.stripe.com/v1/checkout/sessions', $params);
-        if (! $response->successful()) throw new RuntimeException('Stripe não criou o checkout: '.$response->json('error.message', 'erro desconhecido'));
+        $response = Http::timeout((int) env('STRIPE_TIMEOUT_SECONDS', 15))->asForm()->withBasicAuth($key, '')->withHeaders(['Idempotency-Key' => 'stripe-order-'.$order->id])->post('https://api.stripe.com/v1/checkout/sessions', $params);
+        if (! $response->successful()) {
+            $payment->update(['raw_payload' => ['stripe_error' => $response->json('error', $response->json())]]);
+            throw new RuntimeException('Stripe não criou o checkout: '.$response->json('error.message', 'erro desconhecido'));
+        }
         $payload = $response->json();
+        if (! is_array($payload) || empty($payload['id']) || empty($payload['url'])) {
+            $payment->update(['raw_payload' => ['stripe_error' => ['message' => 'checkout_incomplete', 'payload' => $payload]]]);
+            throw new RuntimeException('Stripe retornou um checkout incompleto.');
+        }
         $payment->update(['provider_checkout_id' => $payload['id'] ?? null, 'raw_payload' => $payload]);
         $order->update(['provider_checkout_id' => $payload['id'] ?? null, 'raw_payload' => $payload]);
         return ['order' => $order->fresh(['items.game', 'items.draw']), 'payment' => $payment->fresh(), 'checkout_url' => $payload['url'] ?? null];
@@ -78,18 +96,28 @@ class PaymentService
     public function confirmFromWebhook(array $payload): void
     {
         $object = $payload['data']['object'] ?? [];
+        $type = (string) ($payload['type'] ?? '');
         $orderId = $object['metadata']['order_id'] ?? null;
         $betId = $object['metadata']['bet_id'] ?? $object['client_reference_id'] ?? null;
-        $checkoutId = $object['id'] ?? null;
+        $checkoutId = str_starts_with((string) ($object['id'] ?? ''), 'cs_') ? $object['id'] : null;
+        $providerPaymentId = $object['payment_intent'] ?? (str_starts_with((string) ($object['id'] ?? ''), 'pi_') ? $object['id'] : null);
         $payment = $checkoutId ? Payment::query()->where('provider_checkout_id', $checkoutId)->first() : null;
+        $payment ??= $providerPaymentId ? Payment::query()->where('provider_payment_id', $providerPaymentId)->first() : null;
         $payment ??= $orderId ? Payment::query()->where('order_id', $orderId)->latest()->first() : null;
         $payment ??= $betId ? Payment::query()->where('bet_id', $betId)->latest()->first() : null;
-        $payment ??= $checkoutId ? Payment::query()->where('provider_payment_id', $checkoutId)->first() : null;
+        if ($type === 'checkout.session.completed' && ($object['payment_status'] ?? null) !== 'paid') {
+            if ($payment) $this->markProcessingFromWebhook($payment, $payload);
+            return;
+        }
         if (! $payment || $payment->status === 'succeeded') return;
+        if (! $this->amountAndCurrencyMatch($payment, $object)) {
+            $this->failFromWebhook($payment, $payload, 'amount_or_currency_mismatch');
+            return;
+        }
         if ($orderId && ! $payment->order_id) $payment->update(['order_id' => $orderId]);
         $confirmedBets = [];
         DB::transaction(function () use ($payment, $payload, $object, &$confirmedBets): void {
-            $payment->update(['status' => 'succeeded', 'provider_payment_id' => $object['payment_intent'] ?? $object['id'] ?? $payment->provider_payment_id, 'raw_payload' => $payload, 'paid_at' => now()]);
+            $payment->update(['status' => 'succeeded', 'provider_payment_id' => $object['payment_intent'] ?? (str_starts_with((string) ($object['id'] ?? ''), 'pi_') ? $object['id'] : $payment->provider_payment_id), 'raw_payload' => $payload, 'paid_at' => now()]);
             $order = $payment->order()->lockForUpdate()->first();
             if ($order) {
                 $order->update(['status' => 'paid', 'payment_status' => 'succeeded', 'paid_at' => now(), 'raw_payload' => $payload]);
@@ -113,5 +141,78 @@ class PaymentService
             LedgerEntry::firstOrCreate(['idempotency_key' => 'payment-confirmed-'.$payment->id], ['user_id' => $payment->user_id, 'bet_id' => $bet->id, 'payment_id' => $payment->id, 'type' => 'payment_confirmed', 'amount_cents' => $payment->amount_cents, 'status' => 'posted', 'metadata' => ['provider' => 'stripe']]);
         });
         foreach ($confirmedBets as $confirmedBet) if ($confirmedBet?->user?->email) Mail::to($confirmedBet->user->email)->queue(new BetConfirmationMail($confirmedBet));
+    }
+
+    public function markProcessingFromWebhook(Payment $payment, array $payload): void
+    {
+        DB::transaction(function () use ($payment, $payload): void {
+            $locked = Payment::query()->lockForUpdate()->find($payment->id);
+            if (! $locked || in_array($locked->status, ['succeeded', 'failed', 'cancelled'], true)) return;
+            $locked->update(['status' => 'processing', 'raw_payload' => $payload]);
+            $order = $locked->order()->lockForUpdate()->first();
+            if ($order) {
+                $order->update(['payment_status' => 'processing']);
+                foreach ($order->bets()->lockForUpdate()->get() as $bet) $bet->update(['payment_status' => 'processing']);
+            }
+        });
+    }
+
+    public function markProcessingFromWebhookForPayload(array $payload): void
+    {
+        $payment = $this->paymentFromWebhookPayload($payload);
+        if ($payment) $this->markProcessingFromWebhook($payment, $payload);
+    }
+
+    public function failFromWebhook(Payment $payment, array $payload, string $reason = 'payment_failed'): void
+    {
+        DB::transaction(function () use ($payment, $payload, $reason): void {
+            $locked = Payment::query()->lockForUpdate()->find($payment->id);
+            if (! $locked || $locked->status === 'succeeded') return;
+            $retryableFailure = $reason === 'payment_intent.payment_failed';
+            $locked->update(['status' => 'failed', 'raw_payload' => $payload]);
+            $order = $locked->order()->lockForUpdate()->first();
+            if ($order) {
+                $order->update(['status' => $retryableFailure ? 'awaiting_payment' : 'cancelled', 'payment_status' => 'failed', 'raw_payload' => ['stripe_event' => $payload, 'failure_reason' => $reason]]);
+                foreach ($order->bets()->lockForUpdate()->get() as $bet) $bet->update(['status' => $retryableFailure ? 'awaiting_payment' : 'cancelled', 'payment_status' => 'failed']);
+                if (! $retryableFailure) {
+                    foreach (PoolShare::query()->where('order_id', $order->id)->where('status', 'reserved')->lockForUpdate()->get() as $share) {
+                        $share->update(['status' => 'released']);
+                        $pool = $share->pool()->lockForUpdate()->first();
+                        if ($pool) $pool->decrement('reserved_shares', $share->shares);
+                    }
+                }
+                return;
+            }
+            $bet = $locked->bet()->lockForUpdate()->first();
+            if ($bet) $bet->update(['status' => 'cancelled', 'payment_status' => 'failed']);
+        });
+    }
+
+    public function failFromWebhookForPayload(array $payload): void
+    {
+        $payment = $this->paymentFromWebhookPayload($payload);
+        if ($payment) $this->failFromWebhook($payment, $payload, (string) ($payload['type'] ?? 'payment_failed'));
+    }
+
+    private function paymentFromWebhookPayload(array $payload): ?Payment
+    {
+        $object = $payload['data']['object'] ?? [];
+        $orderId = $object['metadata']['order_id'] ?? null;
+        $betId = $object['metadata']['bet_id'] ?? $object['client_reference_id'] ?? null;
+        $checkoutId = str_starts_with((string) ($object['id'] ?? ''), 'cs_') ? $object['id'] : null;
+        $providerPaymentId = $object['payment_intent'] ?? (str_starts_with((string) ($object['id'] ?? ''), 'pi_') ? $object['id'] : null);
+
+        return ($checkoutId ? Payment::query()->where('provider_checkout_id', $checkoutId)->first() : null)
+            ?? ($providerPaymentId ? Payment::query()->where('provider_payment_id', $providerPaymentId)->first() : null)
+            ?? ($orderId ? Payment::query()->where('order_id', $orderId)->latest()->first() : null)
+            ?? ($betId ? Payment::query()->where('bet_id', $betId)->latest()->first() : null);
+    }
+
+    private function amountAndCurrencyMatch(Payment $payment, array $object): bool
+    {
+        $amount = $object['amount_total'] ?? $object['amount_received'] ?? null;
+        $currency = $object['currency'] ?? null;
+        return ($amount === null || (int) $amount === (int) $payment->amount_cents)
+            && ($currency === null || strtolower((string) $currency) === strtolower((string) $payment->currency));
     }
 }
