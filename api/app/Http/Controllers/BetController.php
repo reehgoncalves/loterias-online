@@ -33,5 +33,5 @@ class BetController extends Controller
             return response()->json(['data'=>$bet->load('game','draw')],201);
         });
     }
-    public function mine(Request $request) { return response()->json(['data'=>Bet::with('game','draw')->where('user_id',$request->user()->id)->latest()->paginate(30)]); }
+    public function mine(Request $request) { return response()->json(['data'=>Bet::with(['game','draw','payout'])->where('user_id',$request->user()->id)->latest()->paginate(30)]); }
 }

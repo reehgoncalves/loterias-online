@@ -12,6 +12,7 @@ type SavedCard = { id: string; brand: string; last4: string; exp_month: number |
 type PixPayment = { payment_intent_id: string; payload: string | null; image_url: string | null; hosted_url: string | null; expires_at: number | null };
 type PoolCard = { id: number; slug: string; game: string; title: string; shares: string; price: number; draw_id?: number; color: string };
 type WalletData = { wallet: { id: number; currency: string; balance_cents: number; locked_cents: number; status: string }; transactions: Array<{ id: number; type: string; amount_cents: number; balance_after_cents: number; status: string; created_at: string }>; withdrawals: Array<{ id: number; amount_cents: number; method: string; status: string; review_note?: string; requested_at: string }> };
+type WinningBet = { id: number; numbers: number[]; status: string; payment_status: string; amount_cents: number; payout_cents: number; is_pool_share?: boolean; game?: Pick<Game, 'name' | 'color'>; draw?: { contest_number: number; draw_at?: string }; payout?: { status: string; approved_at?: string | null } };
 
 const view = ref<View>('home');
 const mobileOpen = ref(false);
@@ -55,12 +56,17 @@ const cardModalLoading = ref(false);
 const cardModalError = ref('');
 const cardModalSuccess = ref('');
 const cardSetupClientSecret = ref<string | null>(null);
+const winnerModalOpen = ref(false);
+const winningBet = ref<WinningBet | null>(null);
+const fireworksActive = ref(false);
 let cardStripe: Stripe | null = null;
 let cardElements: StripeElements | null = null;
 let cardElement: StripeCardElement | null = null;
 const activePromoIndex = ref(0);
 const promoPaused = ref(false);
 let promoTimer: number | undefined;
+let winnerPollTimer: number | undefined;
+let winnerFireworksTimer: number | undefined;
 
 const demoCatalog: Game[] = [
   { id: 1, slug: 'mega-sena', name: 'Mega-Sena', short_name: 'MEGA', price_cents: 500, color: '#31b8b2', range_max: 60, numbers_required: 6, next_draw: { contest_number: 2910, draw_at: '2026-08-08T20:00:00-03:00' } },
@@ -113,11 +119,33 @@ function shortDate(value?: string) { return value ? new Date(value).toLocaleDate
 function ticketSubtitle(ticket: CartTicket) { return `${ticket.kind === 'pool' ? '1 cota' : `Concurso ${ticket.game.next_draw?.contest_number ?? '—'}`} · ${ticket.numbers.map(number => String(number).padStart(2, '0')).join(' · ')}`; }
 function notify(message: string) { toast.value = message; window.setTimeout(() => { toast.value = ''; }, 3600); }
 function persistCart() { localStorage.setItem('lottery_cart', JSON.stringify(cart.value)); }
-function navigate(next: View) { view.value = next; mobileOpen.value = false; if (next === 'admin') loadAdmin(); if (next === 'profile' && user.value) { loadProfile(); loadWallet(); loadPaymentMethods(); } }
+function navigate(next: View) { view.value = next; mobileOpen.value = false; if (next === 'admin') loadAdmin(); if (next === 'profile' && user.value) { loadProfile(); loadWallet(); loadPaymentMethods(); void loadWinnerStatus(); } }
 function gameIcon(game: Game) { return game.slug === 'mega-sena' ? Sparkles : game.slug === 'lotofacil' ? Ticket : game.slug === 'quina' ? CircleDollarSign : game.slug === 'timemania' ? Trophy : game.slug === 'dia-de-sorte' ? Banknote : game.slug === 'dupla-sena' ? WalletCards : game.slug === 'lotomania' ? Target : ShieldCheck; }
 function nextPromo() { activePromoIndex.value = (activePromoIndex.value + 1) % promoSlides.length; }
 function previousPromo() { activePromoIndex.value = (activePromoIndex.value - 1 + promoSlides.length) % promoSlides.length; }
 function selectPromo(index: number) { activePromoIndex.value = index; }
+function winnerSeenKey() { return user.value ? `lottery_winners_seen_${user.value.id}` : ''; }
+function seenWinnerIds(): number[] { try { const value = JSON.parse(localStorage.getItem(winnerSeenKey()) || '[]'); return Array.isArray(value) ? value.map(Number) : []; } catch { return []; } }
+function markWinnerAsSeen(id: number) { const ids = Array.from(new Set([...seenWinnerIds(), id])).slice(-100); localStorage.setItem(winnerSeenKey(), JSON.stringify(ids)); }
+function announceWinner(bet: WinningBet) {
+  winningBet.value = bet;
+  winnerModalOpen.value = true;
+  fireworksActive.value = true;
+  markWinnerAsSeen(bet.id);
+  if (winnerFireworksTimer) window.clearTimeout(winnerFireworksTimer);
+  winnerFireworksTimer = window.setTimeout(() => { fireworksActive.value = false; }, 6200);
+}
+function closeWinnerCelebration() { winnerModalOpen.value = false; fireworksActive.value = false; winningBet.value = null; }
+async function loadWinnerStatus() {
+  if (!user.value || user.value.portal !== 'cliente') return;
+  try {
+    const response = await api<{ data: { data?: WinningBet[] } }>('/api/v1/my-bets');
+    const winner = (response.data.data ?? []).find(bet => bet.status === 'won' && bet.payout?.status === 'approved' && !seenWinnerIds().includes(bet.id));
+    if (winner) announceWinner(winner);
+  } catch { /* A falha de consulta não impede o acesso do cliente. */ }
+}
+function startWinnerPolling() { if (winnerPollTimer) window.clearInterval(winnerPollTimer); winnerPollTimer = window.setInterval(() => { void loadWinnerStatus(); }, 30000); }
+function stopWinnerPolling() { if (winnerPollTimer) { window.clearInterval(winnerPollTimer); winnerPollTimer = undefined; } }
 
 async function loadCatalog() {
   try {
@@ -128,17 +156,17 @@ async function loadCatalog() {
 }
 function openLogin(portal: 'cliente' | 'admin' = 'cliente') { loginPortal.value = portal; isRegister.value = false; loginError.value = ''; isLogin.value = true; view.value = 'login'; mobileOpen.value = false; }
 function openRegister() { loginPortal.value = 'cliente'; isRegister.value = true; loginError.value = ''; isLogin.value = true; view.value = 'login'; mobileOpen.value = false; }
-function logout() { localStorage.removeItem('lottery_token'); user.value = null; navigate('home'); notify('Você saiu da sua conta.'); }
+function logout() { stopWinnerPolling(); closeWinnerCelebration(); localStorage.removeItem('lottery_token'); user.value = null; navigate('home'); notify('Você saiu da sua conta.'); }
 async function submitLogin() {
   loading.value = true; loginError.value = '';
   try {
     const response = await api<{ data: { access_token: string; profile: User } }>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: email.value, password: password.value, portal: loginPortal.value }) });
-    localStorage.setItem('lottery_token', response.data.access_token); user.value = response.data.profile; isLogin.value = false; navigate(loginPortal.value === 'admin' ? 'admin' : 'games'); notify(cartCount.value ? 'Acesso autorizado. Seu carrinho foi preservado.' : 'Acesso autorizado.');
+    localStorage.setItem('lottery_token', response.data.access_token); user.value = response.data.profile; isLogin.value = false; navigate(loginPortal.value === 'admin' ? 'admin' : 'games'); if (loginPortal.value === 'cliente') { startWinnerPolling(); void loadWinnerStatus(); } notify(cartCount.value ? 'Acesso autorizado. Seu carrinho foi preservado.' : 'Acesso autorizado.');
   } catch {
     const demoEmail = loginPortal.value === 'admin' ? 'admin@loterias.online' : 'cliente@loterias.online';
     if (email.value === demoEmail && password.value === 'Loterias@2026!') {
       user.value = { id: loginPortal.value === 'admin' ? 1 : 2, name: loginPortal.value === 'admin' ? 'Admin Loterias Online' : 'Cliente Demo', email: email.value, portal: loginPortal.value };
-      isLogin.value = false; navigate(loginPortal.value === 'admin' ? 'admin' : 'games'); notify(cartCount.value ? 'Modo demonstração ativado. Seu carrinho foi preservado.' : 'Modo demonstração ativado.');
+      isLogin.value = false; navigate(loginPortal.value === 'admin' ? 'admin' : 'games'); if (loginPortal.value === 'cliente') { startWinnerPolling(); void loadWinnerStatus(); } notify(cartCount.value ? 'Modo demonstração ativado. Seu carrinho foi preservado.' : 'Modo demonstração ativado.');
     } else loginError.value = 'Confira seu e-mail, senha e perfil de acesso.';
   } finally { loading.value = false; }
 }
@@ -146,7 +174,7 @@ async function submitRegister() {
   loading.value = true; loginError.value = '';
   try {
     const response = await api<{ data: { access_token: string; profile: User } }>('/api/auth/register', { method: 'POST', body: JSON.stringify({ name: customerName.value, email: email.value, password: password.value, password_confirmation: passwordConfirmation.value }) });
-    localStorage.setItem('lottery_token', response.data.access_token); user.value = response.data.profile; isLogin.value = false; navigate('games'); notify(response.data.profile.has_stripe_customer ? 'Cadastro criado e Customer Stripe sincronizado.' : 'Cadastro criado. O Stripe será sincronizado no primeiro pagamento.');
+    localStorage.setItem('lottery_token', response.data.access_token); user.value = response.data.profile; isLogin.value = false; navigate('games'); startWinnerPolling(); void loadWinnerStatus(); notify(response.data.profile.has_stripe_customer ? 'Cadastro criado e Customer Stripe sincronizado.' : 'Cadastro criado. O Stripe será sincronizado no primeiro pagamento.');
   } catch (error) { loginError.value = error instanceof Error ? error.message : 'Não foi possível criar seu cadastro.'; }
   finally { loading.value = false; }
 }
@@ -355,8 +383,8 @@ async function requestWithdrawal() {
 async function reviewWithdrawal(id: number, status: 'approved' | 'rejected' | 'paid') { try { await api(`/api/v1/admin/wallet-withdrawals/${id}/review`, { method: 'POST', body: JSON.stringify({ status, note: status === 'paid' ? 'Baixa simulada de homologação.' : undefined }) }); notify(status === 'paid' ? 'Saque baixado em modo de homologação.' : `Saque ${status === 'approved' ? 'aprovado' : 'rejeitado'}.`); await loadAdmin(); } catch (error) { notify(error instanceof Error ? error.message : 'Não foi possível atualizar o saque.'); } }
 async function approvePayout(id: number, simulate = false) { try { await api(`/api/v1/admin/payouts/${id}/approve`, { method: 'POST', body: JSON.stringify({ simulate }) }); notify('Crédito aprovado e lançado na carteira do cliente.'); await loadAdmin(); } catch (error) { notify(error instanceof Error ? error.message : 'O prêmio ainda está no período de conferência.'); } }
 function showAdmin() { if (user.value?.portal === 'admin') navigate('admin'); else openLogin('admin'); }
-onMounted(async () => { promoTimer = window.setInterval(() => { if (!promoPaused.value) nextPromo(); }, 5200); await loadCatalog(); try { const saved = JSON.parse(localStorage.getItem('lottery_cart') || '[]'); if (Array.isArray(saved)) cart.value = saved; } catch { cart.value = []; } if (localStorage.getItem('lottery_token')) { try { const response = await api<{ data: User }>('/api/v1/me'); user.value = response.data; await loadWallet(); } catch { localStorage.removeItem('lottery_token'); } } });
-onBeforeUnmount(() => { if (promoTimer) window.clearInterval(promoTimer); destroyCardElement(); });
+onMounted(async () => { promoTimer = window.setInterval(() => { if (!promoPaused.value) nextPromo(); }, 5200); await loadCatalog(); try { const saved = JSON.parse(localStorage.getItem('lottery_cart') || '[]'); if (Array.isArray(saved)) cart.value = saved; } catch { cart.value = []; } if (localStorage.getItem('lottery_token')) { try { const response = await api<{ data: User }>('/api/v1/me'); user.value = response.data; await loadWallet(); if (user.value.portal === 'cliente') { startWinnerPolling(); await loadWinnerStatus(); } } catch { stopWinnerPolling(); localStorage.removeItem('lottery_token'); } } });
+onBeforeUnmount(() => { if (promoTimer) window.clearInterval(promoTimer); stopWinnerPolling(); if (winnerFireworksTimer) window.clearTimeout(winnerFireworksTimer); destroyCardElement(); });
 </script>
 
 <template>
@@ -450,6 +478,23 @@ onBeforeUnmount(() => { if (promoTimer) window.clearInterval(promoTimer); destro
     <div v-if="cardModalOpen" class="modal-overlay" @click.self="closeCardRegistrationModal"><section class="payment-modal card-registration-modal" role="dialog" aria-modal="true" aria-labelledby="card-modal-title"><div class="modal-head"><div><span class="summary-kicker">Carteira segura</span><h2 id="card-modal-title">Adicionar cartão</h2><p>Cadastre seu cartão nesta modal. O Stripe criptografa os dados diretamente no navegador.</p></div><button class="icon-button" @click="closeCardRegistrationModal"><X :size="18" /></button></div><div class="card-modal-brand"><CreditCard :size="20" /><div><strong>Cartão de crédito ou débito</strong><small>Visa, Mastercard e outras bandeiras aceitas</small></div></div><div v-if="cardModalLoading && !cardElement" class="payment-loading"><span class="loading-dot"></span>Preparando formulário seguro...</div><div id="card-element" class="stripe-card-element"></div><p v-if="cardModalError" class="checkout-feedback">{{ cardModalError }}</p><p v-if="cardModalSuccess" class="card-success"><CheckCircle2 :size="16" /> {{ cardModalSuccess }}</p><div class="modal-actions"><button class="btn btn-outline" @click="closeCardRegistrationModal">Cancelar</button><button class="btn btn-primary" :disabled="cardModalLoading || !cardElement" @click="saveCardFromModal">{{ cardModalLoading ? 'Salvando...' : 'Salvar cartão' }} <ArrowRight :size="16" /></button></div><div class="secure-note"><ShieldCheck :size="15" /> O número do cartão e o CVC não são armazenados pela Loterias Online.</div></section></div>
 
     <div v-if="paymentModalOpen && pixPayment" class="modal-overlay pix-qr-overlay" @click.self="paymentModalOpen = false"><section class="payment-modal pix-qr-modal" role="dialog" aria-modal="true" aria-labelledby="pix-modal-title"><div class="modal-head"><div><span class="summary-kicker">Pagamento PIX</span><h2 id="pix-modal-title">Escaneie para pagar</h2><p>Use o app do seu banco para ler o QR Code ou copie o código.</p></div><button class="icon-button" @click="paymentModalOpen = false"><X :size="18" /></button></div><img v-if="pixPayment.image_url" class="pix-qr-image" :src="pixPayment.image_url" alt="QR Code PIX do pedido" /><div v-else class="pix-qr-fallback"><CircleDollarSign :size="27" /><span>O Stripe não enviou a imagem do QR Code neste momento.</span><a v-if="pixPayment.hosted_url" :href="pixPayment.hosted_url" target="_blank" rel="noreferrer">Abrir instruções PIX</a></div><div v-if="pixPayment.payload" class="pix-copy-box"><textarea readonly :value="pixPayment.payload" aria-label="Código PIX copia e cola"></textarea><button class="btn btn-outline btn-small" @click="copyPixPayload">Copiar código</button></div><small v-if="pixPayment.expires_at" class="pix-expiry">Expira em {{ new Date(pixPayment.expires_at * 1000).toLocaleString('pt-BR') }}</small><div class="modal-actions"><button class="btn btn-primary" @click="paymentModalOpen = false">Fechar</button></div><div class="secure-note"><ShieldCheck :size="15" /> O pedido só será confirmado após o webhook do Stripe.</div></section></div>
+    <div v-if="winnerModalOpen && winningBet" class="winner-celebration" role="dialog" aria-modal="true" aria-labelledby="winner-modal-title">
+      <div v-if="fireworksActive" class="fireworks" aria-hidden="true"><span class="firework firework-one"></span><span class="firework firework-two"></span><span class="firework firework-three"></span><span class="firework firework-four"></span></div>
+      <section class="winner-modal">
+        <button class="winner-close" aria-label="Fechar celebração" @click="closeWinnerCelebration"><X :size="18" /></button>
+        <div class="winner-crown"><Trophy :size="30" /></div>
+        <span class="winner-eyebrow">Resultado confirmado pelo admin</span>
+        <h2 id="winner-modal-title">Parabéns, você ganhou! 🎉</h2>
+        <p class="winner-lead">{{ winningBet.is_pool_share ? 'Sua cota premiada está pronta.' : 'Seu cupom premiado foi localizado.' }}</p>
+        <div class="winner-ticket" :style="{ '--winner-color': winningBet.game?.color ?? '#5c2db8' }">
+          <div class="winner-ticket-head"><strong>{{ winningBet.game?.name ?? 'Jogo premiado' }}</strong><span>Concurso {{ winningBet.draw?.contest_number ?? '—' }}</span></div>
+          <div class="winner-numbers"><b v-for="number in winningBet.numbers" :key="number">{{ String(number).padStart(2, '0') }}</b></div>
+          <div class="winner-ticket-foot"><span>{{ winningBet.is_pool_share ? 'Cota vencedora' : 'Cupom vencedor' }}</span><strong>{{ money(winningBet.payout_cents) }}</strong></div>
+        </div>
+        <div class="winner-notice"><CheckCircle2 :size="17" /> Crédito liberado na carteira após aprovação administrativa. A transferência continua sujeita a KYC e revisão.</div>
+        <button class="btn btn-primary winner-action" @click="closeWinnerCelebration(); navigate('profile')">Abrir minha carteira e cota <ArrowRight :size="16" /></button>
+      </section>
+    </div>
     <button v-if="view === 'games' && selectedGame" class="coupon-quick" @click="generateCoupon"><Sparkles :size="15" /> Gerar cupom Surpresinha</button>
     <div v-if="toast" class="toast"><CheckCircle2 :size="16" style="vertical-align:-3px;margin-right:6px" />{{ toast }}</div>
   </div>
