@@ -20,10 +20,10 @@ class CaixaResultsClient
             'contest_number' => (int) $payload['numero'],
             'draw_at' => $this->parseDate($payload['dataApuracao'] ?? now()->toDateTimeString()),
             'numbers' => array_values(array_map('intval', $numbers)),
+            'special' => $payload['nomeTimeCoracao'] ?? $payload['nomeTimeCoracaoMesSorte'] ?? $payload['mesSorte'] ?? $payload['timeCoracao'] ?? null,
             'raw' => $payload,
         ];
     }
 
     private function parseDate(string $date): string { return date('Y-m-d H:i:s', strtotime(str_replace('/', '-', $date))); }
 }
-

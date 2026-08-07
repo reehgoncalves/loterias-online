@@ -283,7 +283,8 @@ class PaymentService
 
     private function formatNumbers(array $numbers): string
     {
-        return implode(' · ', array_map(fn ($number) => str_pad((string) $number, 2, '0', STR_PAD_LEFT), $numbers));
+        $flat = array_values(array_map(fn ($number) => is_array($number) ? implode('/', $number) : $number, $numbers));
+        return implode(' · ', array_map(fn ($number) => str_pad((string) $number, 2, '0', STR_PAD_LEFT), $flat));
     }
 
     public function confirmFromWebhook(array $payload): void

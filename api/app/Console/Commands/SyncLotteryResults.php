@@ -19,7 +19,7 @@ class SyncLotteryResults extends Command
         foreach ($games as $game) {
             try {
                 $result = $client->latest($game->slug);
-                $draw = Draw::updateOrCreate(['lottery_game_id'=>$game->id,'contest_number'=>$result['contest_number']], ['draw_at'=>$result['draw_at'],'results'=>['numbers'=>$result['numbers']],'raw_payload'=>$result['raw'],'result_hash'=>hash('sha256',json_encode($result['raw'])),'synced_at'=>now(),'status'=>'result_received','payout_cap_cents'=>$game->max_prize_cents]);
+                $draw = Draw::updateOrCreate(['lottery_game_id'=>$game->id,'contest_number'=>$result['contest_number']], ['draw_at'=>$result['draw_at'],'results'=>['numbers'=>$result['numbers'],'special'=>$result['special']],'raw_payload'=>$result['raw'],'result_hash'=>hash('sha256',json_encode($result['raw'])),'synced_at'=>now(),'status'=>'result_received','payout_cap_cents'=>$game->max_prize_cents]);
                 SettleDrawBets::dispatch($draw->id);
                 $this->info("{$game->slug}: concurso {$result['contest_number']} sincronizado.");
             } catch (\Throwable $exception) { $this->error("{$game->slug}: {$exception->getMessage()}"); }

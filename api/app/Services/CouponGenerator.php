@@ -7,7 +7,9 @@ use Illuminate\Validation\ValidationException;
 
 class CouponGenerator
 {
-    public function generateBatch(LotteryGame $game, int $quantity = 1): array
+    public function __construct(private readonly LotteryRules $rules) {}
+
+    public function generateBatch(LotteryGame $game, int $quantity = 1, ?int $numberCount = null): array
     {
         $quantity = max(1, min(50, $quantity));
         $coupons = [];
@@ -15,7 +17,7 @@ class CouponGenerator
         $attempts = 0;
 
         while (count($coupons) < $quantity && $attempts++ < 5000) {
-            $numbers = $this->generate($game);
+            $numbers = $this->generate($game, $numberCount);
             $key = $this->canonicalKey($game, $numbers);
             if (isset($keys[$key])) continue;
             $keys[$key] = true;
@@ -29,42 +31,35 @@ class CouponGenerator
         return $coupons;
     }
 
-    public function validate(LotteryGame $game, array $numbers): array
-    {
-        $numbers = array_values(array_map('intval', $numbers));
-        if (count($numbers) !== (int) $game->numbers_required) {
-            throw ValidationException::withMessages(['numbers' => "Escolha {$game->numbers_required} números para {$game->name}."]);
-        }
-
-        $min = (int) ($game->number_min ?? 1);
-        $max = (int) $game->range_max;
-        foreach ($numbers as $number) {
-            if ($number < $min || $number > $max) {
-                throw ValidationException::withMessages(['numbers' => "Os números de {$game->name} devem estar entre {$min} e {$max}."]);
-            }
-        }
-
-        if (! $game->allow_repeated_numbers && count(array_unique($numbers)) !== count($numbers)) {
-            throw ValidationException::withMessages(['numbers' => 'Esta modalidade não permite números repetidos.']);
-        }
-
-        return $game->selection_mode === 'columns' ? $numbers : $this->sorted($numbers);
-    }
+    public function validate(LotteryGame $game, array $numbers): array { return $this->rules->validate($game, $numbers); }
 
     public function canonicalKey(LotteryGame $game, array $numbers): string
     {
-        $normalized = $game->selection_mode === 'columns' ? $numbers : $this->sorted($numbers);
-        return $game->slug.':'.implode('-', array_map(fn (int $number): string => str_pad((string) $number, 2, '0', STR_PAD_LEFT), $normalized));
+        $normalized = $this->rules->canonicalNumbers($game, $numbers);
+        return $game->slug.':'.json_encode($normalized, JSON_THROW_ON_ERROR);
     }
 
-    private function generate(LotteryGame $game): array
+    private function generate(LotteryGame $game, ?int $numberCount = null): array
     {
-        $min = (int) ($game->number_min ?? 1);
-        $max = (int) $game->range_max;
-        $required = (int) $game->numbers_required;
+        $definition = $this->rules->definition($game);
+        $min = (int) $definition['range_min'];
+        $max = (int) $definition['range_max'];
+        $required = $numberCount ?? $this->rules->minNumbers($game);
+        if ($required < $this->rules->minNumbers($game) || $required > $this->rules->maxNumbers($game)) $required = $this->rules->minNumbers($game);
 
-        if ($game->selection_mode === 'columns' || $game->allow_repeated_numbers) {
-            return array_map(fn (): int => random_int($min, $max), range(1, $required));
+        if ($this->rules->isColumns($game)) {
+            $columns = (int) ($definition['columns'] ?? 7);
+            $columns = array_map(fn (): array => [random_int($min, $max)], range(1, $columns));
+            $extra = max(0, $required - count($columns));
+            while ($extra > 0) {
+                foreach ($columns as $index => $column) {
+                    if ($extra <= 0 || count($column) >= 3) continue;
+                    $candidate = random_int($min, $max);
+                    if (in_array($candidate, $column, true)) continue;
+                    $columns[$index][] = $candidate; $extra--;
+                }
+            }
+            return $columns;
         }
 
         $pool = range($min, $max);
@@ -84,4 +79,3 @@ class CouponGenerator
         return array_values($numbers);
     }
 }
-

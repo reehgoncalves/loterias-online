@@ -11,9 +11,11 @@ use App\Models\Payout;
 use App\Models\Wallet;
 use App\Models\WalletWithdrawal;
 use App\Services\RiskGuard;
+use App\Services\LotteryRules;
 use App\Services\WalletService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Artisan;
 
 class AdminController extends Controller
 {
@@ -57,9 +59,43 @@ class AdminController extends Controller
     public function bets() { return response()->json(['data'=>Bet::with(['user','game','draw'])->latest()->paginate(50)]); }
     public function payments() { return response()->json(['data'=>Payment::with('user')->latest()->paginate(50)]); }
     public function pools() { return response()->json(['data'=>LotteryPool::with(['game','draw'])->latest()->paginate(50)]); }
+    public function results() { return response()->json(['data'=>$this->resultRows()]); }
+    public function prices(LotteryRules $rules) { return response()->json(['data'=>LotteryGame::query()->where('active', DB::raw('true'))->get()->map(fn (LotteryGame $game) => $this->priceRow($game, $rules))->values()]); }
+    public function updatePrices(LotteryGame $game, Request $request, LotteryRules $rules) {
+        $payload = $request->validate(['prices'=>'required|array']);
+        $definition = $rules->definition($game);
+        $official = $definition['official_price_table'];
+        $prices = [];
+        foreach ($official as $count => $officialCents) {
+            $key = (string) $count;
+            $value = $payload['prices'][$key] ?? $payload['prices'][$count] ?? null;
+            if (! is_numeric($value) || (int) $value < (int) $officialCents) return response()->json(['message'=>"O preço de {$game->name} com {$count} números não pode ficar abaixo de ".number_format($officialCents / 100, 2, ',', '.').". O piso oficial evita venda deficitária."], 422);
+            $prices[$key] = (int) $value;
+        }
+        $game->update(['selling_price_table'=>$prices,'price_cents'=>$prices[(string) $definition['min_numbers']] ?? $game->price_cents]);
+        return response()->json(['data'=>$this->priceRow($game->fresh(), $rules)]);
+    }
+    public function syncResults(Request $request) {
+        $arguments = $request->validate(['game'=>'nullable|string|max:80']);
+        Artisan::call('lottery:sync', array_filter(['--game'=>$arguments['game'] ?? null], fn ($value) => $value !== null));
+        return response()->json(['data'=>$this->resultRows(), 'output'=>Artisan::output()]);
+    }
     public function walletWithdrawals() { return response()->json(['data'=>WalletWithdrawal::with(['user','wallet'])->latest()->paginate(50)]); }
     public function reviewWithdrawal(WalletWithdrawal $withdrawal, Request $request, WalletService $wallets) { $data = $request->validate(['status'=>'required|in:approved,rejected,paid','note'=>'nullable|string|max:500']); return response()->json(['data'=>$wallets->reviewWithdrawal($withdrawal, $data['status'], $data['note'] ?? null)]); }
     public function payouts() { return response()->json(['data'=>Payout::with(['user','bet.game','bet.draw'])->whereIn('status', ['manual_review','approved'])->latest()->paginate(50)]); }
     public function approvePayout(Payout $payout, Request $request, WalletService $wallets) { $data = $request->validate(['simulate'=>'nullable|boolean']); return response()->json(['data'=>$wallets->approvePrizeCredit($payout, $request->user(), (bool) ($data['simulate'] ?? false))]); }
     public function pauseGame(LotteryGame $game) { $game->update(['active'=>DB::raw('false')]); return response()->json(['data'=>$game]); }
+
+    private function resultRows()
+    {
+        return \App\Models\Draw::query()->with(['game','bets.user','bets.poolShare.pool'])->whereIn('status',['result_received','settled'])->latest('synced_at')->limit(20)->get()->map(function ($draw) {
+            return ['id'=>$draw->id,'game'=>['name'=>$draw->game->name,'slug'=>$draw->game->slug,'color'=>$draw->game->color],'contest_number'=>$draw->contest_number,'draw_at'=>$draw->draw_at,'sales_close_at'=>$draw->sales_close_at,'status'=>$draw->status,'synced_at'=>$draw->synced_at,'results'=>$draw->results,'source_payload'=>$draw->raw_payload,'bets_count'=>$draw->bets->count(),'winning_bets'=>$draw->bets->where('status','won')->count(),'pool_bets'=>$draw->bets->where('is_pool_share',true)->count(),'bets'=>$draw->bets->map(fn ($bet)=>['id'=>$bet->id,'player'=>$bet->user?->name,'numbers'=>$bet->numbers,'special_value'=>$bet->special_value,'status'=>$bet->status,'payout_cents'=>$bet->payout_cents,'is_pool_share'=>$bet->is_pool_share,'pool'=>$bet->poolShare?->pool?->name]),];
+        })->values();
+    }
+
+    private function priceRow(LotteryGame $game, LotteryRules $rules): array
+    {
+        $definition = $rules->definition($game);
+        return ['id'=>$game->id,'name'=>$game->name,'slug'=>$game->slug,'min_numbers'=>$definition['min_numbers'],'max_numbers'=>$definition['max_numbers'],'official_price_table'=>$definition['official_price_table'],'price_table'=>$definition['price_table'],'rules_source_url'=>$game->rules_source_url ?: ($definition['source_url'] ?? null)];
+    }
 }

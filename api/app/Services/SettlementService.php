@@ -17,13 +17,17 @@ class SettlementService
         DB::transaction(function () use ($draw): void {
             $draw = Draw::query()->with('game')->lockForUpdate()->findOrFail($draw->id);
             if ($draw->status === 'settled') return;
-            $result = collect($draw->results['numbers'] ?? $draw->results ?? [])->map(fn ($n) => (int) $n)->all();
+            $resultPayload = is_array($draw->results) ? $draw->results : [];
+            $result = collect($resultPayload['numbers'] ?? $resultPayload)->map(fn ($n) => (int) $n)->all();
+            $resultSpecial = $resultPayload['special'] ?? null;
             if ($result === []) return;
-            foreach ($draw->bets()->where('is_pool_share', DB::raw('false'))->where('payment_status', 'succeeded')->whereIn('status', ['paid', 'manual_review'])->lockForUpdate()->get() as $bet) {
-                $matches = count(array_intersect($result, array_map('intval', $bet->numbers)));
+            foreach ($draw->bets()->where('payment_status', 'succeeded')->whereIn('status', ['paid', 'manual_review'])->lockForUpdate()->get() as $bet) {
+                $betNumbers = collect($bet->numbers ?? [])->flatMap(fn ($number) => is_array($number) ? $number : [$number])->map(fn ($number) => (int) $number)->all();
+                $matches = count(array_intersect($result, $betNumbers));
+                $specialMatch = $bet->special_value !== null && $resultSpecial !== null && (string) $bet->special_value === (string) $resultSpecial;
                 $multiplier = (int) ($draw->game->payout_rules[(string) $matches] ?? 0);
                 $payout = min($bet->amount_cents * $multiplier, $draw->payout_cap_cents ?: PHP_INT_MAX, $draw->game->max_prize_cents ?: PHP_INT_MAX);
-                if ($payout <= 0) { $bet->update(['status' => 'lost', 'settled_at' => now(), 'settlement_note' => "{$matches} acertos"]); continue; }
+                if ($payout <= 0) { $bet->update(['status' => 'lost', 'settled_at' => now(), 'settlement_note' => "{$matches} acertos".($specialMatch ? '; opção especial conferida' : '')]); continue; }
                 if (! $this->risk->canPayout($draw, $payout)) {
                     $bet->update([
                         'status' => 'won',

@@ -357,6 +357,24 @@ h1, h2, h3, .brand { font-family: 'Space Grotesk', sans-serif; }
 .risk-list strong { color: var(--ink); font-size: 13px; }
 .admin-lower { margin-top: 17px; }
 .admin-payouts { margin-top: 17px; }
+.admin-pricing { margin: 17px 0; }
+.price-admin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.price-admin-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px; border: 1px solid #e9e1f5; border-radius: 13px; background: #fcfbff; }
+.price-admin-card strong, .price-admin-card small { display: block; }
+.price-admin-card strong { color: var(--ink); font-size: 13px; }
+.price-admin-card small { margin-top: 4px; color: var(--muted); font-size: 10px; }
+.price-admin-values { display: grid; justify-items: end; gap: 7px; }
+.price-admin-values span { color: var(--muted); font-size: 10px; white-space: nowrap; }
+.price-admin-values b { color: var(--purple); font-size: 13px; }
+.price-modal { max-width: 560px; }
+.admin-price-editor { display: grid; gap: 9px; margin-top: 20px; }
+.admin-price-row { display: grid; grid-template-columns: minmax(0, 1fr) 112px 18px; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid #e9e1f5; border-radius: 11px; background: #fcfbff; }
+.admin-price-row strong, .admin-price-row small { display: block; }
+.admin-price-row strong { color: var(--ink); font-size: 12px; }
+.admin-price-row small { margin-top: 3px; color: var(--muted); font-size: 10px; }
+.admin-price-row input { width: 100%; padding: 9px 8px; border: 1px solid var(--border); border-radius: 9px; color: var(--ink); background: white; text-align: right; }
+.admin-price-row input:focus { border-color: var(--purple); outline: 0; box-shadow: 0 0 0 3px #5c2db81c; }
+.admin-price-row > span { color: var(--muted); font-size: 10px; }
 .withdrawal-list { display: grid; gap: 10px; }
 .withdrawal-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 12px; padding: 12px 0; border-bottom: 1px solid #eee8f6; }
 .withdrawal-row strong, .withdrawal-row small { display: block; }
@@ -457,6 +475,36 @@ td { color: #4e4665; }
 .pix-copy-box textarea { width: 100%; min-height: 78px; resize: vertical; padding: 10px; border: 1px solid var(--border); border-radius: 10px; color: var(--muted); background: #fcfbff; font: 10px/1.45 monospace; }
 .pix-copy-box .btn { justify-self: end; display: inline-flex; align-items: center; gap: 6px; }
 .pix-expiry { display: block; margin-top: 9px; color: var(--muted); font-size: 10px; }
+.admin-header-actions { display: flex; gap: 9px; flex-wrap: wrap; }
+.pool-card-draw { margin-top: 10px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.pool-lines-list { display: grid; gap: 9px; max-height: 330px; overflow: auto; padding-right: 3px; }
+.pool-line-row { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 9px; padding: 9px; border: 1px solid #eae2f5; border-radius: 11px; background: #fcfbff; }
+.pool-line-row > span { color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.pool-line-row .pool-detail-numbers { margin: 0; }
+.super-column { padding: 7px 0 10px; border-bottom: 1px solid #ffffff18; }
+.super-column label, .special-select label { display: block; margin-bottom: 6px; color: #ded2f9; font-size: 11px; font-weight: 700; }
+.column-digit-row { display: flex; flex-wrap: wrap; gap: 5px; }
+.column-digit { width: 28px; height: 28px; border: 1px solid #ffffff2a; border-radius: 8px; color: #ded2f9; background: #ffffff0d; font-size: 11px; font-weight: 800; }
+.column-digit.selected { border-color: #ffc94e; color: #2a164a; background: #ffc94e; }
+.special-select { margin-top: 14px; }
+.special-select select { width: 100%; padding: 10px 11px; border: 1px solid #ffffff2a; border-radius: 10px; color: white; background: #ffffff12; }
+.special-select option { color: var(--ink); }
+.results-modal { max-width: 760px; }
+.results-list { display: grid; gap: 12px; max-height: 61vh; overflow: auto; }
+.result-card { padding: 14px; border: 1px solid #e9e1f5; border-radius: 14px; background: #fcfbff; }
+.result-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.result-card-head strong, .result-card-head small { display: block; }
+.result-card-head strong { color: var(--ink); font-size: 13px; }
+.result-card-head small { margin-top: 4px; color: var(--muted); font-size: 10px; }
+.result-numbers { margin: 12px 0; }
+.result-stats { display: flex; flex-wrap: wrap; gap: 7px; color: var(--muted); font-size: 10px; font-weight: 700; }
+.result-stats span { padding: 5px 8px; border-radius: 999px; background: #f0ebfa; }
+.result-bets { display: grid; gap: 5px; margin-top: 11px; }
+.result-bets > div { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(130px, 1.4fr) auto; gap: 8px; align-items: center; padding: 7px 9px; border-radius: 8px; color: var(--muted); background: white; font-size: 10px; }
+.result-bets strong { color: var(--ink); font-size: 10px; }
+.result-bet-numbers { color: var(--muted); font-size: 9px; white-space: normal; }
+.result-bets em { color: var(--muted); font-size: 10px; font-style: normal; }
+.result-bets em.winner { color: #12866f; font-weight: 800; }
 .coupon-quick { position: fixed; bottom: 22px; left: 22px; z-index: 40; display: inline-flex; align-items: center; gap: 7px; border: 0; border-radius: 13px; padding: 12px 15px; color: white; background: linear-gradient(135deg, var(--purple), var(--pink)); font-weight: 700; box-shadow: 0 10px 25px rgba(92,45,184,.25); }
 .empty { color: var(--muted); padding: 35px 10px; text-align: center; font-size: 14px; }
 .mobile-menu { display: none; }

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class OrderItem extends Model
 {
-    protected $fillable = ['order_id', 'lottery_game_id', 'draw_id', 'lottery_pool_id', 'numbers', 'amount_cents', 'shares', 'potential_prize_cents'];
+    protected $fillable = ['order_id', 'lottery_game_id', 'draw_id', 'lottery_pool_id', 'numbers', 'special_value', 'amount_cents', 'shares', 'potential_prize_cents'];
     protected $casts = ['numbers' => 'array'];
 
     public function order(): BelongsTo { return $this->belongsTo(Order::class); }

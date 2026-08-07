@@ -12,6 +12,7 @@ use App\Http\Controllers\WalletController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('v1/catalog', [CatalogController::class, 'index']);
+Route::get('v1/pools', [CatalogController::class, 'pools']);
 Route::get('v1/testimonials', [CatalogController::class, 'testimonials']);
 Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttle:auth');
 Route::post('auth/register', [AuthController::class, 'register'])->middleware('throttle:auth');
@@ -36,6 +37,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('bets', [AdminController::class, 'bets']);
         Route::get('payments', [AdminController::class, 'payments']);
         Route::get('pools', [AdminController::class, 'pools']);
+        Route::get('results', [AdminController::class, 'results']);
+        Route::post('results/sync', [AdminController::class, 'syncResults']);
+        Route::get('prices', [AdminController::class, 'prices']);
+        Route::put('games/{game}/prices', [AdminController::class, 'updatePrices']);
         Route::get('wallet-withdrawals', [AdminController::class, 'walletWithdrawals']);
         Route::post('wallet-withdrawals/{withdrawal}/review', [AdminController::class, 'reviewWithdrawal']);
         Route::get('payouts', [AdminController::class, 'payouts']);
