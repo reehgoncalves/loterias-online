@@ -9,7 +9,7 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
   const token = options.token ?? localStorage.getItem('lottery_token');
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
-  const response = await fetch(`${API_URL}${path}`, { ...options, headers });
+  const response = await fetch(`${API_URL}${path}`, { ...options, headers, credentials: 'include' });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new Error(payload.message || 'Não foi possível completar a solicitação.') as Error & { status?: number };
