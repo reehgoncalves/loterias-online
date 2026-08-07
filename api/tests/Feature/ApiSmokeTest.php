@@ -16,6 +16,12 @@ class ApiSmokeTest extends TestCase
         $this->getJson('/api/v1/catalog')->assertOk()->assertJsonStructure(['data']);
     }
 
+    public function test_public_pools_and_testimonials_contracts_are_available(): void
+    {
+        $this->getJson('/api/v1/pools')->assertOk()->assertJsonStructure(['data']);
+        $this->getJson('/api/v1/testimonials')->assertOk()->assertJsonStructure(['data']);
+    }
+
     public function test_customer_can_login_and_receive_sanctum_token(): void
     {
         User::create(['name'=>'Cliente Teste','email'=>'cliente@test.local','password'=>Hash::make('secret'),'portal'=>'cliente','active'=>true]);

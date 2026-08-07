@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\LotteryGame;
+use App\Models\LotteryPool;
 use App\Models\Testimonial;
 use App\Services\LotteryRules;
 use Illuminate\Http\JsonResponse;
