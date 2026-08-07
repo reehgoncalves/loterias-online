@@ -14,9 +14,9 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->render(function (Throwable $e, $request) {
             if ($request->expectsJson()) {
-                if ($e instanceof ValidationException) return response()->json(['message' => 'Os dados enviados são inválidos.', 'errors' => $e->errors()], 422);
+                if ($e instanceof ValidationException) return new \Illuminate\Http\JsonResponse(['message' => 'Os dados enviados são inválidos.', 'errors' => $e->errors()], 422);
                 $status = method_exists($e, 'getStatusCode') && is_int($e->getStatusCode()) ? $e->getStatusCode() : 500;
-                return response()->json(['message' => $e->getMessage() ?: 'Erro interno.'], $status);
+                return new \Illuminate\Http\JsonResponse(['message' => $e->getMessage() ?: 'Erro interno.'], $status);
             }
         });
     })->create();
