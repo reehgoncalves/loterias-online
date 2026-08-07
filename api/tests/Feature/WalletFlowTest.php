@@ -82,6 +82,21 @@ class WalletFlowTest extends TestCase
         $this->assertDatabaseCount('wallet_transactions', 1);
     }
 
+    public function test_insufficient_reserve_keeps_official_winner_and_defers_prize_credit(): void
+    {
+        $user = $this->user();
+        $game = LotteryGame::create(['slug' => 'reserve-review-test', 'name' => 'Reserve Review Teste', 'short_name' => 'RRT', 'color' => '#5c2db8', 'price_cents' => 500, 'numbers_required' => 6, 'range_max' => 60, 'number_min' => 1, 'selection_mode' => 'distinct', 'allow_repeated_numbers' => false, 'payout_rules' => ['6' => 2000], 'max_prize_cents' => 1000000, 'payout_ratio' => 0.70, 'active' => true]);
+        $draw = Draw::create(['lottery_game_id' => $game->id, 'contest_number' => 777002, 'draw_at' => now()->subHour(), 'status' => 'result_received', 'results' => ['numbers' => [1, 2, 3, 4, 5, 6]], 'payout_cap_cents' => 1000000]);
+        Bet::create(['user_id' => $user->id, 'lottery_game_id' => $game->id, 'draw_id' => $draw->id, 'numbers' => [1, 2, 3, 4, 5, 6], 'amount_cents' => 500, 'potential_prize_cents' => 1000000, 'payout_cents' => 0, 'status' => 'paid', 'payment_status' => 'succeeded', 'is_pool_share' => false, 'idempotency_key' => 'reserve-review-bet-1']);
+
+        app(SettlementService::class)->settle($draw);
+
+        $this->assertDatabaseHas('bets', ['id' => 1, 'status' => 'won', 'payout_cents' => 1000000]);
+        $this->assertDatabaseHas('payouts', ['bet_id' => 1, 'status' => 'manual_review', 'amount_cents' => 1000000]);
+        $this->assertDatabaseMissing('ledger_entries', ['type' => 'payout_reserved', 'bet_id' => 1]);
+        $this->assertDatabaseHas('draws', ['id' => $draw->id, 'status' => 'settled']);
+    }
+
     private function user(): User
     {
         return User::create(['name' => 'Wallet Teste', 'email' => 'wallet-'.uniqid().'@test.local', 'password' => Hash::make('secret'), 'portal' => 'cliente', 'active' => true]);

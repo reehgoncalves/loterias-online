@@ -24,7 +24,17 @@ class SettlementService
                 $multiplier = (int) ($draw->game->payout_rules[(string) $matches] ?? 0);
                 $payout = min($bet->amount_cents * $multiplier, $draw->payout_cap_cents ?: PHP_INT_MAX, $draw->game->max_prize_cents ?: PHP_INT_MAX);
                 if ($payout <= 0) { $bet->update(['status' => 'lost', 'settled_at' => now(), 'settlement_note' => "{$matches} acertos"]); continue; }
-                if (! $this->risk->canPayout($draw, $payout)) { $bet->update(['status' => 'manual_review', 'payout_cents' => $payout, 'settled_at' => now(), 'settlement_note' => 'Reserva insuficiente; revisão manual obrigatória.']); Payout::firstOrCreate(['idempotency_key' => 'payout-'.$bet->id], ['user_id' => $bet->user_id, 'bet_id' => $bet->id, 'amount_cents' => $payout, 'status' => 'manual_review', 'review_note' => 'Caixa elegível insuficiente.', 'credit_available_at' => now()->addDay()]); continue; }
+                if (! $this->risk->canPayout($draw, $payout)) {
+                    $bet->update([
+                        'status' => 'won',
+                        'payout_cents' => $payout,
+                        'won_at' => now(),
+                        'settled_at' => now(),
+                        'settlement_note' => "{$matches} acertos; reserva insuficiente, revisão manual obrigatória.",
+                    ]);
+                    Payout::firstOrCreate(['idempotency_key' => 'payout-'.$bet->id], ['user_id' => $bet->user_id, 'bet_id' => $bet->id, 'amount_cents' => $payout, 'status' => 'manual_review', 'review_note' => 'Ganhador identificado; caixa elegível insuficiente para crédito automático.', 'credit_available_at' => now()->addDay()]);
+                    continue;
+                }
                 $bet->update(['status' => 'won', 'payout_cents' => $payout, 'won_at' => now(), 'settled_at' => now(), 'settlement_note' => "{$matches} acertos; pagamento pendente de KYC e revisão."]); 
                 Payout::firstOrCreate(['idempotency_key' => 'payout-'.$bet->id], ['user_id' => $bet->user_id, 'bet_id' => $bet->id, 'amount_cents' => $payout, 'status' => 'manual_review', 'review_note' => 'Aguardando 24h, KYC e aprovação humana.', 'credit_available_at' => now()->addDay()]);
                 LedgerEntry::firstOrCreate(['idempotency_key' => 'payout-reserved-'.$bet->id], ['user_id' => $bet->user_id, 'bet_id' => $bet->id, 'type' => 'payout_reserved', 'amount_cents' => $payout, 'status' => 'posted', 'metadata' => ['draw_id' => $draw->id]]);

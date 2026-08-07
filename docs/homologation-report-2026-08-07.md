@@ -90,6 +90,16 @@ Resultado atual:
 - `RISK_TEST_MODE` só é aceito fora de produção;
 - produção mantém o bloqueio anti-prejuízo.
 
+## Regra de sorteio sem reserva suficiente
+
+O sorteio oficial nunca é cancelado ou alterado por falta de caixa. Quando a
+apuração identifica uma combinação vencedora, o bilhete permanece como
+`won`, o valor calculado é registrado e o prêmio fica em `manual_review`.
+Nesse caso não há crédito automático, saque ou transferência: o admin precisa
+resolver a reserva, KYC e a revisão financeira antes de liberar o valor. O teste
+`test_insufficient_reserve_keeps_official_winner_and_defers_prize_credit`
+confirma esse comportamento.
+
 ## Pendência para homologação Stripe pública
 
 O Preview público da Vercel permanece protegido por autenticação, e a API de
