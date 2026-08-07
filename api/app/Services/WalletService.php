@@ -26,7 +26,13 @@ class WalletService
         ]);
 
         return [
-            'wallet' => $wallet->only(['id', 'currency', 'balance_cents', 'locked_cents', 'status']),
+            'wallet' => [
+                'id' => (int) $wallet->id,
+                'currency' => $wallet->currency,
+                'balance_cents' => (int) ($wallet->balance_cents ?? 0),
+                'locked_cents' => (int) ($wallet->locked_cents ?? 0),
+                'status' => $wallet->status,
+            ],
             'transactions' => $wallet->transactions->map(fn (WalletTransaction $transaction) => [
                 'id' => $transaction->id,
                 'type' => $transaction->type,
