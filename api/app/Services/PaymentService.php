@@ -125,6 +125,40 @@ class PaymentService
         return ['order' => $order->fresh(['items.game', 'items.draw']), 'payment' => $payment->fresh(), 'checkout_url' => $payload['url'] ?? null];
     }
 
+    public function cancelOrderAfterCheckoutFailure(Order $order, string $reason): void
+    {
+        DB::transaction(function () use ($order, $reason): void {
+            $lockedOrder = Order::query()->lockForUpdate()->find($order->id);
+            if (! $lockedOrder) return;
+
+            $failurePayload = ['checkout_failure' => ['message' => $reason]];
+            $lockedOrder->update([
+                'status' => 'cancelled',
+                'payment_status' => 'failed',
+                'raw_payload' => array_merge(is_array($lockedOrder->raw_payload) ? $lockedOrder->raw_payload : [], $failurePayload),
+            ]);
+
+            foreach ($lockedOrder->bets()->lockForUpdate()->get() as $bet) {
+                if ($bet->payment_status === 'succeeded') continue;
+                $bet->update(['status' => 'cancelled', 'payment_status' => 'failed']);
+            }
+
+            $payment = $lockedOrder->payments()->latest()->lockForUpdate()->first();
+            if ($payment && $payment->status !== 'succeeded') {
+                $payment->update([
+                    'status' => 'failed',
+                    'raw_payload' => array_merge(is_array($payment->raw_payload) ? $payment->raw_payload : [], $failurePayload),
+                ]);
+            }
+
+            foreach (PoolShare::query()->where('order_id', $lockedOrder->id)->where('status', 'reserved')->lockForUpdate()->get() as $share) {
+                $share->update(['status' => 'released']);
+                $pool = $share->pool()->lockForUpdate()->first();
+                if ($pool) $pool->decrement('reserved_shares', $share->shares);
+            }
+        });
+    }
+
     private function chargeOrderWithSavedCard(Order $order, User $user, Payment $payment, string $paymentMethodId): array
     {
         $customerId = $this->customers->ensure($user);

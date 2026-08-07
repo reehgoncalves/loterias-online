@@ -113,6 +113,7 @@ class OrderController extends Controller
         try {
             $checkout = $payments->checkoutOrder($order, $request->user(), $data['method'], $data['payment_method_id'] ?? null);
         } catch (\RuntimeException $exception) {
+            $payments->cancelOrderAfterCheckoutFailure($order, $exception->getMessage());
             return response()->json(['message' => $exception->getMessage(), 'data' => ['order' => $order->fresh(['items.game', 'items.draw']), 'payment' => $order->payments()->latest()->first()]], 502);
         }
         return response()->json(['data' => ['order' => $checkout['order'] ?? $order->fresh(['items.game', 'items.draw']), 'payment' => $checkout['payment'], 'checkout_url' => $checkout['checkout_url'] ?? null, 'mode' => $checkout['mode'] ?? null]], 201);

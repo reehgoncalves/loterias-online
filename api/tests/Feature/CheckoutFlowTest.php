@@ -140,6 +140,27 @@ class CheckoutFlowTest extends TestCase
         }
     }
 
+    public function test_cart_checkout_failure_cancels_order_and_releases_exposure(): void
+    {
+        [$customer, $game, $draw] = $this->fixture();
+        Env::getRepository()->set('STRIPE_SECRET_KEY', 'sk_test_fake');
+        Http::fake([
+            'https://api.stripe.com/v1/customers' => Http::response(['id' => 'cus_test_cart_failure'], 200),
+            'https://api.stripe.com/v1/payment_intents' => Http::response(['error' => ['message' => 'PIX desabilitado para esta conta de teste.']], 400),
+        ]);
+
+        $response = $this->actingAs($customer, 'sanctum')->withHeaders(['Idempotency-Key' => 'cart-failure-cleanup-1'])->postJson('/api/v1/orders/checkout', [
+            'tickets' => [['game_id' => $game->id, 'draw_id' => $draw->id, 'numbers' => [1, 2, 3, 4, 5, 6]]],
+            'method' => 'pix',
+        ]);
+
+        $response->assertStatus(502)->assertJsonPath('message', 'Stripe não criou o PIX: PIX desabilitado para esta conta de teste.');
+        $orderId = $response->json('data.order.id');
+        $this->assertDatabaseHas('orders', ['id' => $orderId, 'status' => 'cancelled', 'payment_status' => 'failed']);
+        $this->assertDatabaseHas('bets', ['order_id' => $orderId, 'status' => 'cancelled', 'payment_status' => 'failed']);
+        $this->assertDatabaseHas('payments', ['order_id' => $orderId, 'status' => 'failed']);
+    }
+
     public function test_stripe_incomplete_checkout_response_is_never_saved_as_a_valid_session(): void
     {
         [$customer, $game, $draw] = $this->fixture();
