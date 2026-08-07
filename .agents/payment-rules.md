@@ -83,6 +83,10 @@ estrutura legal e financeira aprovada.
 
 ## Regras de Stripe e métodos de pagamento
 
+No lançamento atual, a API e a interface aceitam somente cartão e PIX. Boleto
+fica desativado até existir homologação bancária, confirmação de liquidação e
+revisão de risco; não reative esse método removendo apenas a validação da tela.
+
 1. Segredos Stripe só no backend; nunca no frontend, Git ou logs.
 2. Usar `sk_test_` em homologação e separar chaves/webhooks de produção.
 3. Webhook deve validar assinatura, timestamp e idempotência.
@@ -136,4 +140,3 @@ publicar depoimento falso como prova de ganho real.
 Qualquer relaxamento destas regras exige revisão humana explícita, documentação
 da hipótese de risco, teste automatizado, migração reversível e validação
 jurídica/financeira antes de produção.
-

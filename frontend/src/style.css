@@ -43,7 +43,7 @@ h1, h2, h3, .brand { font-family: 'Space Grotesk', sans-serif; }
 .btn-small { padding: 8px 11px; font-size: 12px; border-radius: 9px; }
 
 .main { max-width: 1180px; margin: auto; padding: 36px 24px 65px; }
-.hero { position: relative; overflow: hidden; border-radius: 27px; min-height: 320px; padding: 47px 50px; background: radial-gradient(circle at 83% 20%, #ed80ca 0, #ed80ca00 28%), linear-gradient(125deg, #3a1f80, #5b2db7 48%, #e6408b); color: white; box-shadow: var(--shadow); }
+.hero { position: relative; overflow: hidden; border-radius: 27px; min-height: 320px; padding: 47px 50px; background: linear-gradient(90deg, rgba(43, 17, 96, .98) 0%, rgba(76, 34, 145, .89) 42%, rgba(230, 64, 139, .3) 100%), url('/images/jackpot-hero.png') center / cover no-repeat; color: white; box-shadow: var(--shadow); }
 .hero::after { content: ''; position: absolute; right: -70px; bottom: -95px; width: 370px; height: 280px; border-radius: 50%; background: #ffcb4d; opacity: .9; transform: rotate(-15deg); }
 .hero::before { content: '✦'; position: absolute; right: 31%; top: 24px; font-size: 38px; color: #ffe477; }
 .hero-copy { position: relative; z-index: 1; max-width: 590px; }
@@ -51,6 +51,7 @@ h1, h2, h3, .brand { font-family: 'Space Grotesk', sans-serif; }
 .hero h1 { font-size: clamp(35px, 5vw, 59px); line-height: .99; letter-spacing: -.06em; max-width: 650px; }
 .hero p { color: #eee7ff; margin-top: 17px; max-width: 520px; line-height: 1.55; }
 .hero .btn { margin-top: 25px; }
+.hero-note { display: block; color: #efe6ff; font-size: 11px; line-height: 1.35; margin-top: 11px; max-width: 390px; }
 .hero-badge { position: absolute; z-index: 2; right: 56px; top: 54px; width: 165px; height: 165px; border-radius: 50%; background: #fff; color: var(--purple); display: grid; place-items: center; text-align: center; padding: 20px; font-weight: 700; box-shadow: 0 18px 30px rgba(31, 11, 82, .2); transform: rotate(9deg); }
 .hero-badge strong { display: block; font-size: 28px; font-family: 'Space Grotesk', sans-serif; }
 
@@ -217,9 +218,10 @@ td { color: #4e4665; }
 .status.pending { background: #fff3d5; color: #986700; }
 .status.danger { background: #ffe3ea; color: #bd2856; }
 
-.toast { position: fixed; bottom: 22px; right: 22px; z-index: 50; background: #24124d; color: white; padding: 13px 16px; border-radius: 12px; box-shadow: var(--shadow); font-size: 13px; }
+.toast { position: fixed; bottom: 22px; right: 22px; z-index: 90; background: #24124d; color: white; padding: 13px 16px; border-radius: 12px; box-shadow: var(--shadow); font-size: 13px; }
+.checkout-feedback { background: #ffe3ea; border: 1px solid #f4a7bb; color: #9d214c; border-radius: 11px; padding: 10px 12px; margin-bottom: 11px; font-size: 12px; line-height: 1.45; }
 .coupon-quick { position: fixed; bottom: 22px; left: 22px; z-index: 40; display: inline-flex; align-items: center; gap: 7px; border: 0; border-radius: 13px; padding: 12px 15px; color: white; background: linear-gradient(135deg, var(--purple), var(--pink)); font-weight: 700; box-shadow: 0 10px 25px rgba(92,45,184,.25); }
 .empty { color: var(--muted); padding: 35px 10px; text-align: center; font-size: 14px; }
 .mobile-menu { display: none; }
 @media (max-width: 900px) { .games { grid-template-columns: repeat(2, 1fr); } .game-catalog-grid { grid-template-columns: repeat(2, 1fr) !important; } .pool-grid, .dream-grid { grid-template-columns: repeat(2, 1fr); } .feature-row { grid-template-columns: 1fr; } .page-grid, .admin-grid, .profile-grid { grid-template-columns: 1fr; } .kpis { grid-template-columns: repeat(2, 1fr); } .hero-badge { right: 28px; top: auto; bottom: 24px; width: 112px; height: 112px; font-size: 11px; } .hero-badge strong { font-size: 21px; } }
-@media (max-width: 650px) { .topbar-inner { padding: 13px 16px; gap: 8px; } .nav { display: none; } .mobile-menu { display: block; margin-left: auto; } .top-actions .account-button, .top-actions > .btn-ghost { display: none; } .cart-button span { display: none; } .main { padding: 22px 16px 50px; } .hero { padding: 31px 25px; min-height: 410px; } .hero h1 { font-size: 38px; } .hero-badge { right: 25px; } .number-grid { grid-template-columns: repeat(8, 1fr); } .testimonials { grid-template-columns: 1fr; } .section-head { align-items: start; flex-direction: column; } .kpis { gap: 9px; } .kpi { padding: 13px; } .kpi strong { font-size: 21px; } .auth-card { padding: 25px 20px; } .dream-grid, .pool-grid, .game-catalog-grid { grid-template-columns: 1fr !important; } .profile-cover { padding: 25px 22px; } .profile-cover h1 { font-size: 29px; } .profile-avatar { width: 54px; height: 54px; border-radius: 17px; } .profile-cart { align-items: start; flex-direction: column; } .cart-drawer { padding: 22px 16px; } }
+@media (max-width: 650px) { .topbar-inner { padding: 13px 16px; gap: 8px; } .nav { display: none; } .mobile-menu { display: block; margin-left: auto; } .top-actions .account-button, .top-actions > .btn-ghost { display: none; } .cart-button span { display: none; } .main { padding: 22px 16px 50px; } .hero { padding: 31px 25px; min-height: 410px; background-position: 62% center; } .hero h1 { font-size: 38px; } .hero-badge { right: 25px; } .number-grid { grid-template-columns: repeat(8, 1fr); } .testimonials { grid-template-columns: 1fr; } .section-head { align-items: start; flex-direction: column; } .kpis { gap: 9px; } .kpi { padding: 13px; } .kpi strong { font-size: 21px; } .auth-card { padding: 25px 20px; } .dream-grid, .pool-grid, .game-catalog-grid { grid-template-columns: 1fr !important; } .profile-cover { padding: 25px 22px; } .profile-cover h1 { font-size: 29px; } .profile-avatar { width: 54px; height: 54px; border-radius: 17px; } .profile-cart { align-items: start; flex-direction: column; } .cart-drawer { padding: 22px 16px; } }

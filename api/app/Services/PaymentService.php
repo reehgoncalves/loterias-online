@@ -19,7 +19,7 @@ class PaymentService
 {
     public function checkout(Bet $bet, User $user, string $method): array
     {
-        if (! in_array($method, ['card', 'pix', 'boleto'], true)) throw new RuntimeException('Método de pagamento não permitido.');
+        if (! in_array($method, ['card', 'pix'], true)) throw new RuntimeException('Método de pagamento não permitido. Boleto está temporariamente desativado.');
         $key = (string) env('STRIPE_SECRET_KEY');
         $payment = Payment::firstOrCreate(['idempotency_key' => 'checkout-'.$bet->id], ['user_id' => $user->id, 'bet_id' => $bet->id, 'provider' => 'stripe', 'method' => $method, 'amount_cents' => $bet->amount_cents, 'currency' => env('STRIPE_CURRENCY', 'brl'), 'status' => 'pending']);
         if ($payment->provider_checkout_id) return ['payment' => $payment, 'checkout_url' => $payment->raw_payload['url'] ?? null];
@@ -41,7 +41,7 @@ class PaymentService
 
     public function checkoutOrder(Order $order, User $user, string $method): array
     {
-        if (! in_array($method, ['card', 'pix', 'boleto'], true)) throw new RuntimeException('Método de pagamento não permitido.');
+        if (! in_array($method, ['card', 'pix'], true)) throw new RuntimeException('Método de pagamento não permitido. Boleto está temporariamente desativado.');
         $key = (string) env('STRIPE_SECRET_KEY');
         $payment = Payment::firstOrCreate(['idempotency_key' => 'order-checkout-'.$order->id], [
             'user_id' => $user->id, 'order_id' => $order->id, 'provider' => 'stripe', 'method' => $method,

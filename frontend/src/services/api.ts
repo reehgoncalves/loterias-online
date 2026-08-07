@@ -11,9 +11,12 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
 
   const response = await fetch(`${API_URL}${path}`, { ...options, headers });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.message || 'Não foi possível completar a solicitação.');
+  if (!response.ok) {
+    const error = new Error(payload.message || 'Não foi possível completar a solicitação.') as Error & { status?: number };
+    error.status = response.status;
+    throw error;
+  }
   return payload as T;
 }
 
 export function apiUrl() { return API_URL; }
-

@@ -26,13 +26,15 @@ class OrderController extends Controller
             'tickets.*.numbers' => 'required|array',
             'tickets.*.pool_id' => 'nullable|integer',
             'tickets.*.shares' => 'nullable|integer|min:1|max:20',
-            'method' => 'required|in:card,pix,boleto',
+            'method' => 'required|in:card,pix',
         ]);
 
         $idempotencyKey = $request->header('Idempotency-Key', 'order-'.Str::uuid());
         $existing = Order::query()->where('user_id', $request->user()->id)->where('idempotency_key', $idempotencyKey)->first();
         if ($existing) {
-            return response()->json(['data' => ['order' => $existing->load('items'), 'checkout_url' => $existing->raw_payload['url'] ?? null, 'mode' => 'idempotent_replay']]);
+            $payment = $existing->payments()->latest()->first();
+            $checkoutUrl = $existing->raw_payload['url'] ?? null;
+            return response()->json(['data' => ['order' => $existing->load('items'), 'payment' => $payment, 'checkout_url' => $checkoutUrl, 'mode' => $checkoutUrl ? 'idempotent_replay' : 'stripe_not_configured']]);
         }
 
         try {

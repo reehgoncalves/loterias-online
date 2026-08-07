@@ -13,8 +13,9 @@ Plataforma nova, separada do `apetit-ops-hub`, com storefront em Vue 3 e API Lar
 - criação de apostas e carteira de apostas do cliente;
 - carrinho persistente com cupons de jogos e cotas de bolão no mesmo pedido;
 - cadastro rápido preservando o carrinho e área do cliente com portal seguro do
-  Stripe para gerenciar cartão; PIX e boleto são escolhidos por checkout;
-- checkout Stripe em modo test para cartão, Pix e boleto quando habilitados na conta;
+  Stripe para gerenciar cartão; cartão e PIX são escolhidos por checkout;
+- checkout Stripe em modo test para cartão e PIX; boleto permanece desativado no
+  lançamento até passar por homologação bancária e revisão de risco;
 - webhook de pagamento idempotente;
 - sincronização configurável com o endpoint oficial de resultados CAIXA;
 - job de liquidação automática de concursos;
