@@ -334,6 +334,14 @@ td { color: #4e4665; }
 .saved-card-copy small { margin-top: 4px; color: var(--muted); font-size: 10px; }
 .saved-card-check { color: #179980; }
 .add-card-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 12px; border: 0; background: none; color: var(--purple); font-size: 12px; font-weight: 700; }
+.card-registration-modal { max-width: 530px; }
+.card-modal-brand { display: flex; align-items: center; gap: 11px; margin: 18px 0 12px; padding: 13px; border: 1px solid #e9e0f6; border-radius: 13px; background: linear-gradient(135deg, #faf8ff, #fff); color: var(--purple); }
+.card-modal-brand strong, .card-modal-brand small { display: block; }
+.card-modal-brand strong { color: var(--ink); font-size: 13px; }
+.card-modal-brand small { margin-top: 3px; color: var(--muted); font-size: 11px; }
+.stripe-card-element { min-height: 43px; padding: 13px 12px; border: 1px solid #ded4ec; border-radius: 12px; background: #fff; box-shadow: inset 0 1px 2px #22104208; }
+.stripe-card-element.StripeElement--focus { border-color: var(--purple); box-shadow: 0 0 0 3px #5c2db81c; }
+.card-success { display: flex; align-items: center; gap: 6px; margin: 12px 0 0; color: #168970; font-size: 12px; font-weight: 700; }
 .pix-payment-card, .pix-qr-panel { display: flex; align-items: center; gap: 12px; min-height: 134px; padding: 18px; border-radius: 15px; background: linear-gradient(140deg, #ecfffa, #f4efff); }
 .pix-payment-card strong, .pix-qr-panel strong { color: var(--ink); }
 .pix-payment-card p, .pix-qr-panel p { margin-top: 5px; color: var(--muted); font-size: 12px; line-height: 1.5; }

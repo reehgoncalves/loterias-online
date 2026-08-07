@@ -61,4 +61,36 @@ class ProfileController extends Controller
         if (! $portal->successful()) throw new RuntimeException('Stripe não abriu o portal: '.$portal->json('error.message', 'erro desconhecido'));
         return response()->json(['data' => ['url' => $portal->json('url')]]);
     }
+
+    public function setupIntent(Request $request, StripeCustomerService $customers)
+    {
+        $secret = (string) env('STRIPE_SECRET_KEY');
+        $publishableKey = (string) env('STRIPE_PUBLISHABLE_KEY');
+        if ($secret === '' || $publishableKey === '') {
+            return response()->json(['message' => 'O cadastro de cartão ainda não está configurado neste ambiente.'], 503);
+        }
+
+        try {
+            $customerId = $customers->ensure($request->user());
+            $intent = Http::timeout((int) env('STRIPE_TIMEOUT_SECONDS', 15))
+                ->asForm()
+                ->withBasicAuth($secret, '')
+                ->post('https://api.stripe.com/v1/setup_intents', [
+                    'customer' => $customerId,
+                    'payment_method_types[]' => 'card',
+                    'usage' => 'off_session',
+                ]);
+        } catch (\Throwable $exception) {
+            return response()->json(['message' => 'Stripe está indisponível no momento.'], 502);
+        }
+
+        if (! $intent->successful() || ! is_string($intent->json('client_secret'))) {
+            return response()->json(['message' => 'Stripe não preparou o cadastro do cartão: '.$intent->json('error.message', 'erro desconhecido')], 502);
+        }
+
+        return response()->json(['data' => [
+            'client_secret' => $intent->json('client_secret'),
+            'publishable_key' => $publishableKey,
+        ]]);
+    }
 }

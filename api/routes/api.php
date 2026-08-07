@@ -21,6 +21,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('v1/me', [AuthController::class, 'me']);
     Route::get('v1/profile', [ProfileController::class, 'show']);
     Route::get('v1/profile/payment-methods', [ProfileController::class, 'paymentMethods']);
+    Route::post('v1/profile/setup-intent', [ProfileController::class, 'setupIntent']);
     Route::post('v1/profile/billing-portal', [ProfileController::class, 'billingPortal']);
     Route::post('auth/logout', [AuthController::class, 'logout']);
     Route::get('v1/my-bets', [BetController::class, 'mine']);
