@@ -8,6 +8,9 @@ require __DIR__.'/../vendor/autoload.php';
 try {
     /** @var Application $app */
     $app = require_once __DIR__.'/../bootstrap/app.php';
+    if (! $app->bound('view')) {
+        $app->register(Illuminate\View\ViewServiceProvider::class);
+    }
     $app->handleRequest(Request::capture());
 } catch (Throwable $exception) {
     error_log(sprintf(
