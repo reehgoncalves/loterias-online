@@ -94,7 +94,7 @@ class OrderController extends Controller
                     'idempotency_key' => 'order-'.$order->id.'-item-'.$orderItem->id,
                     'status' => 'awaiting_payment',
                     'payment_status' => 'pending',
-                    'is_pool_share' => (bool) $item['pool'],
+                    'is_pool_share' => DB::raw($item['pool'] ? 'true' : 'false'),
                 ]);
                 if ($item['pool']) {
                     $item['pool']->increment('reserved_shares', $item['shares']);
