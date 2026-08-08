@@ -420,11 +420,11 @@ async function openBillingPortal() {
 }
 async function loadAdmin() {
   try {
-    const [dashboard, withdrawals, payouts, results, prices] = await Promise.all([api<{ data: any }>('/api/v1/admin/dashboard'), api<{ data: { data?: any[] } }>('/api/v1/admin/wallet-withdrawals'), api<{ data: { data?: any[] } }>('/api/v1/admin/payouts'), api<{ data?: any[] }>('/api/v1/admin/results'), api<{ data?: any[] }>('/api/v1/admin/prices')]);
+    const [dashboard, withdrawals, payouts, results, prices] = await Promise.all([api<{ data: any }>('/api/v1/admin/dashboard'), api<{ data: { data?: any[] } }>('/api/v1/admin/wallet-withdrawals'), api<{ data: { data?: any[] } }>('/api/v1/admin/payouts'), api<any>('/api/v1/admin/results'), api<{ data?: any[] }>('/api/v1/admin/prices')]);
     adminData.value = dashboard.data;
     adminWithdrawals.value = withdrawals.data.data ?? [];
     adminPayouts.value = payouts.data.data ?? [];
-    adminResults.value = results.data ?? [];
+    adminResults.value = Array.isArray(results) ? results : (results.data ?? []);
     adminPrices.value = prices.data ?? [];
   }
   catch { adminData.value = { kpis: { revenue_cents: 3020000, payout_cents: 1240000, margin_cents: 1780000, active_bets: 1842 }, chart: fallbackChart, bets: [{ id: '#LO-10294', player: 'Mariana Costa', game: 'Mega-Sena', amount_cents: 600, status: 'paid' }, { id: '#LO-10293', player: 'Rafael Lima', game: 'Lotofácil', amount_cents: 350, status: 'won' }, { id: '#LO-10292', player: 'João Pedro', game: 'Quina', amount_cents: 300, status: 'pending' }] }; }
@@ -448,7 +448,7 @@ async function saveAdminPrices() {
     notify(error instanceof Error ? error.message : 'Não foi possível salvar a tabela de preços.');
   } finally { loading.value = false; }
 }
-async function syncAdminResults() { loading.value = true; try { const response = await api<{ data?: any[] }>('/api/v1/admin/results/sync', { method: 'POST', body: JSON.stringify({}) }); adminResults.value = response.data ?? []; resultsModalOpen.value = true; notify('Resultados consultados na fonte oficial e apuração enfileirada.'); } catch (error) { notify(error instanceof Error ? error.message : 'Não foi possível sincronizar os resultados agora.'); } finally { loading.value = false; } }
+async function syncAdminResults() { loading.value = true; try { const response = await api<any>('/api/v1/admin/results/sync', { method: 'POST', body: JSON.stringify({}) }); adminResults.value = Array.isArray(response) ? response : (response.data ?? []); resultsModalOpen.value = true; notify('Resultados consultados na fonte oficial e apuração enfileirada.'); } catch (error) { notify(error instanceof Error ? error.message : 'Não foi possível sincronizar os resultados agora.'); } finally { loading.value = false; } }
 async function loadProfile() {
   try {
     const response = await api<{ data: { has_stripe_customer?: boolean } }>('/api/v1/profile');
