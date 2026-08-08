@@ -3,6 +3,7 @@ const API_ORIGIN = 'https://loterias-online-api.vercel.app';
 const hopByHopHeaders = new Set([
   'connection',
   'content-length',
+  'content-encoding',
   'host',
   'keep-alive',
   'transfer-encoding',
