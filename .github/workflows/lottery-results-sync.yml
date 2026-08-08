@@ -28,7 +28,19 @@ jobs:
           }
 
           failed=0
+          declare -A app_slugs=(
+            [megasena]='mega-sena'
+            [lotofacil]='lotofacil'
+            [quina]='quina'
+            [timemania]='timemania'
+            [diadesorte]='dia-de-sorte'
+            [duplasena]='dupla-sena'
+            [lotomania]='lotomania'
+            [supersete]='super-sete'
+          )
+
           for slug in megasena lotofacil quina timemania diadesorte duplasena lotomania supersete; do
+            app_slug="${app_slugs[$slug]}"
             response_file="$(mktemp)"
             http_code="$(curl --silent --show-error --location --max-time 30 --retry 2 \
               --output "${response_file}" --write-out '%{http_code}' \
@@ -53,11 +65,11 @@ jobs:
               continue
             fi
 
-            payload="$(jq -c --arg slug "${slug}" '{
+            payload="$(jq -c --arg slug "${app_slug}" '{
               source: "caixa",
               slug: $slug,
               contest_number: (.numero | tonumber),
-              draw_at: .dataApuracao,
+              draw_at: (.dataApuracao | split("/") | "\(.[2])-\(.[1])-\(.[0]) 00:00:00"),
               numbers: ((.listaDezenas // .dezenas // []) | map(tonumber)),
               special: (.nomeTimeCoracao // .nomeTimeCoracaoMesSorte // .mesSorte // .timeCoracao // null),
               raw: .

@@ -13,6 +13,7 @@ use App\Models\LotteryGame;
 use App\Services\LotteryResultImporter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Validation\Rule;
 
@@ -47,7 +48,7 @@ Route::post('internal/lottery-results', function (Request $request, LotteryResul
 
     $game = LotteryGame::query()
         ->where('slug', $payload['slug'])
-        ->where('active', true)
+        ->where('active', DB::raw('true'))
         ->first();
 
     if (! $game) {
