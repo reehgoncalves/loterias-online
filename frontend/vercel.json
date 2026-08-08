@@ -9,7 +9,7 @@
       "destination": "https://loterias-online-api.vercel.app/api/:path*"
     },
     {
-      "source": "/backend/:path*",
+      "source": "/service/:path*",
       "destination": "https://loterias-online-api.vercel.app/api/:path*"
     }
   ]
