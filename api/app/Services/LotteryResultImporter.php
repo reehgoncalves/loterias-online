@@ -57,6 +57,32 @@ class LotteryResultImporter
             SettleDrawBets::dispatch($draw->id);
         }
 
+        $this->syncNextDraw($game, $result, $contestNumber);
+
         return $draw->fresh(['game']);
+    }
+
+    private function syncNextDraw(LotteryGame $game, array $result, int $contestNumber): void
+    {
+        $nextContestNumber = (int) ($result['next_contest_number'] ?? 0);
+        $nextDrawAt = $result['next_draw_at'] ?? null;
+
+        if ($nextContestNumber <= $contestNumber || ! $nextDrawAt) return;
+
+        Draw::query()
+            ->where('lottery_game_id', $game->id)
+            ->where('status', 'open')
+            ->where('contest_number', '<', $nextContestNumber)
+            ->update(['status' => 'closed']);
+
+        Draw::updateOrCreate(
+            ['lottery_game_id' => $game->id, 'contest_number' => $nextContestNumber],
+            [
+                'draw_at' => $nextDrawAt,
+                'sales_close_at' => null,
+                'status' => 'open',
+                'payout_cap_cents' => $game->max_prize_cents,
+            ],
+        );
     }
 }

@@ -68,6 +68,8 @@ class OfficialLotteryRulesTest extends TestCase
         Http::fake(['https://servicebus2.caixa.gov.br/portaldeloterias/api/mega-sena/' => Http::response([
             'numero' => 4001,
             'dataApuracao' => '08/08/2026',
+            'numeroConcursoProximo' => 4002,
+            'dataProximoConcurso' => '09/08/2026',
             'listaDezenas' => ['01','02','03','04','05','06'],
         ], 200)]);
         $admin = User::create(['name'=>'Admin Resultados','email'=>'results@test.local','password'=>Hash::make('secret'),'portal'=>'admin','is_admin'=>true,'active'=>true]);
@@ -77,5 +79,12 @@ class OfficialLotteryRulesTest extends TestCase
         $response = $this->actingAs($admin, 'sanctum')->postJson('/api/v1/admin/results/sync', ['game'=>'mega-sena'])->assertOk();
         $response->assertJsonPath('data.0.game.slug', 'mega-sena')->assertJsonPath('data.0.contest_number', 4001)->assertJsonPath('data.0.results.numbers.0', 1);
         $this->assertDatabaseHas('draws', ['lottery_game_id'=>$game->id,'contest_number'=>4001,'status'=>'settled']);
+        $this->assertDatabaseHas('draws', ['lottery_game_id'=>$game->id,'contest_number'=>4002,'status'=>'open']);
+        $this->assertDatabaseHas('draws', ['lottery_game_id'=>$game->id,'contest_number'=>4000,'status'=>'closed']);
+        $this->getJson('/api/v1/catalog')
+            ->assertOk()
+            ->assertJsonPath('data.0.next_draw.contest_number', 4002)
+            ->assertJsonPath('data.0.latest_result.contest_number', 4001)
+            ->assertJsonPath('data.0.latest_result.numbers.0', 1);
     }
 }

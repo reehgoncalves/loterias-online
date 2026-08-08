@@ -30,9 +30,21 @@ class CaixaResultsClient
             'draw_at' => $this->parseDate($payload['dataApuracao'] ?? now()->toDateTimeString()),
             'numbers' => array_values(array_map('intval', $numbers)),
             'special' => $payload['nomeTimeCoracao'] ?? $payload['nomeTimeCoracaoMesSorte'] ?? $payload['mesSorte'] ?? $payload['timeCoracao'] ?? null,
+            'next_contest_number' => (int) ($payload['numeroConcursoProximo'] ?? 0),
+            'next_draw_at' => $this->parseDate($payload['dataProximoConcurso'] ?? null),
             'raw' => $payload,
         ];
     }
 
-    private function parseDate(string $date): string { return date('Y-m-d H:i:s', strtotime(str_replace('/', '-', $date))); }
+    private function parseDate(?string $date): ?string
+    {
+        if (! $date) return null;
+
+        $parsed = \DateTimeImmutable::createFromFormat('d/m/Y', trim($date));
+        if ($parsed === false) {
+            try { $parsed = new \DateTimeImmutable($date); } catch (\Throwable) { return null; }
+        }
+
+        return $parsed->format('Y-m-d H:i:s');
+    }
 }

@@ -72,6 +72,8 @@ jobs:
               draw_at: (.dataApuracao | split("/") | "\(.[2])-\(.[1])-\(.[0]) 00:00:00"),
               numbers: ((.listaDezenas // .dezenas // []) | map(tonumber)),
               special: (.nomeTimeCoracao // .nomeTimeCoracaoMesSorte // .mesSorte // .timeCoracao // null),
+              next_contest_number: (if .numeroConcursoProximo == null then null else (.numeroConcursoProximo | tonumber) end),
+              next_draw_at: (if .dataProximoConcurso == null then null else (.dataProximoConcurso | split("/") | "\(.[2])-\(.[1])-\(.[0]) 00:00:00") end),
               raw: .
             }' "${response_file}")"
 

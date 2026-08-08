@@ -12,11 +12,12 @@ use Illuminate\Support\Facades\DB;
 class CatalogController extends Controller
 {
     public function index(LotteryRules $rules): JsonResponse {
-        $games = LotteryGame::query()->where('active', DB::raw('true'))->with(['draws'=>fn ($q) => $q->where('status','open')->orderBy('draw_at')->limit(1)])->get()->map(function (LotteryGame $game) use ($rules) {
+        $games = LotteryGame::query()->where('active', DB::raw('true'))->with(['draws'=>fn ($q) => $q->where('status','open')->orderBy('draw_at')->limit(1), 'latestResult'])->get()->map(function (LotteryGame $game) use ($rules) {
             $next = $game->draws->first();
+            $latest = $game->latestResult;
             $definition = $rules->definition($game);
             $minimumCount = (int) $definition['min_numbers'];
-            return ['id'=>$game->id,'slug'=>$game->slug,'name'=>$game->name,'short_name'=>$game->short_name,'price_cents'=>$rules->priceFor($game, $minimumCount),'color'=>$game->color,'number_min'=>$definition['range_min'],'range_max'=>$definition['range_max'],'numbers_required'=>$game->numbers_required,'min_numbers'=>$definition['min_numbers'],'max_numbers'=>$definition['max_numbers'],'price_table'=>$definition['price_table'],'official_price_table'=>$definition['official_price_table'],'selection_mode'=>$game->selection_mode,'special_options'=>array_merge($game->special_options ?? [], ['special_type'=>$definition['special_type'] ?? null, 'columns'=>$definition['columns'] ?? null]),'rules_source_url'=>$game->rules_source_url ?: ($definition['source_url'] ?? null),'next_draw'=>$next ? ['id'=>$next->id,'contest_number'=>$next->contest_number,'draw_at'=>$next->draw_at,'sales_close_at'=>$next->sales_close_at] : null];
+            return ['id'=>$game->id,'slug'=>$game->slug,'name'=>$game->name,'short_name'=>$game->short_name,'price_cents'=>$rules->priceFor($game, $minimumCount),'color'=>$game->color,'number_min'=>$definition['range_min'],'range_max'=>$definition['range_max'],'numbers_required'=>$game->numbers_required,'min_numbers'=>$definition['min_numbers'],'max_numbers'=>$definition['max_numbers'],'price_table'=>$definition['price_table'],'official_price_table'=>$definition['official_price_table'],'selection_mode'=>$game->selection_mode,'special_options'=>array_merge($game->special_options ?? [], ['special_type'=>$definition['special_type'] ?? null, 'columns'=>$definition['columns'] ?? null]),'rules_source_url'=>$game->rules_source_url ?: ($definition['source_url'] ?? null),'next_draw'=>$next ? ['id'=>$next->id,'contest_number'=>$next->contest_number,'draw_at'=>$next->draw_at,'sales_close_at'=>$next->sales_close_at] : null,'latest_result'=>$latest ? ['contest_number'=>$latest->contest_number,'draw_at'=>$latest->draw_at,'synced_at'=>$latest->synced_at,'numbers'=>data_get($latest->results, 'numbers', []),'special'=>data_get($latest->results, 'special')] : null];
         });
         return response()->json(['data'=>$games]);
     }

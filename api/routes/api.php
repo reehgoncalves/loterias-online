@@ -43,6 +43,8 @@ Route::post('internal/lottery-results', function (Request $request, LotteryResul
         'numbers' => ['required', 'array', 'min:1', 'max:60'],
         'numbers.*' => ['required', 'integer', 'min:0', 'max:99'],
         'special' => ['nullable', 'string', 'max:120'],
+        'next_contest_number' => ['nullable', 'integer', 'min:1'],
+        'next_draw_at' => ['nullable', 'date'],
         'raw' => ['required', 'array'],
     ]);
 
