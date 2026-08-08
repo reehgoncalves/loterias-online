@@ -7,6 +7,10 @@
     {
       "source": "/api/:path*",
       "destination": "https://loterias-online-api.vercel.app/api/:path*"
+    },
+    {
+      "source": "/backend/:path*",
+      "destination": "https://loterias-online-api.vercel.app/api/:path*"
     }
   ]
 }

@@ -1,5 +1,6 @@
 const configuredApiUrl = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? window.location.origin : 'http://127.0.0.1:8000');
 const API_URL = configuredApiUrl.replace(/\/$/, '');
+const API_PREFIX = import.meta.env.PROD ? '/backend' : '';
 
 export type ApiOptions = RequestInit & { token?: string | null };
 
@@ -10,7 +11,8 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
   const token = options.token ?? localStorage.getItem('lottery_token');
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
-  const response = await fetch(`${API_URL}${path}`, { ...options, headers, credentials: 'include' });
+  const requestPath = API_PREFIX ? path.replace(/^\/api/, '') : path;
+  const response = await fetch(`${API_URL}${API_PREFIX}${requestPath}`, { ...options, headers, credentials: 'include' });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new Error(payload.message || 'Não foi possível completar a solicitação.') as Error & { status?: number };
