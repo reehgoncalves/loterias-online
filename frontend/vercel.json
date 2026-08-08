@@ -5,12 +5,8 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
-      "source": "/api/:path*",
-      "destination": "https://loterias-online-api.vercel.app/api/:path*"
-    },
-    {
       "source": "/x/:path*",
-      "destination": "https://loterias-online-api.vercel.app/api/:path*"
+      "destination": "/api/:path*"
     }
   ]
 }
