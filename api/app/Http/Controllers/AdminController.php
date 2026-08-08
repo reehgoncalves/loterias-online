@@ -88,7 +88,7 @@ class AdminController extends Controller
 
     private function resultRows()
     {
-        return \App\Models\Draw::query()->with(['game','bets.user','bets.poolShare.pool'])->whereIn('status',['result_received','settled'])->latest('synced_at')->limit(20)->get()->map(function ($draw) {
+        return \App\Models\Draw::query()->with(['game','bets.user','bets.poolShare.pool'])->whereNotNull('results')->latest('synced_at')->limit(20)->get()->map(function ($draw) {
             return ['id'=>$draw->id,'game'=>['name'=>$draw->game->name,'slug'=>$draw->game->slug,'color'=>$draw->game->color],'contest_number'=>$draw->contest_number,'draw_at'=>$draw->draw_at,'sales_close_at'=>$draw->sales_close_at,'status'=>$draw->status,'synced_at'=>$draw->synced_at,'results'=>$draw->results,'source_payload'=>$draw->raw_payload,'bets_count'=>$draw->bets->count(),'winning_bets'=>$draw->bets->where('status','won')->count(),'pool_bets'=>$draw->bets->where('is_pool_share',true)->count(),'bets'=>$draw->bets->map(fn ($bet)=>['id'=>$bet->id,'player'=>$bet->user?->name,'numbers'=>$bet->numbers,'special_value'=>$bet->special_value,'status'=>$bet->status,'payout_cents'=>$bet->payout_cents,'is_pool_share'=>$bet->is_pool_share,'pool'=>$bet->poolShare?->pool?->name]),];
         })->values();
     }
