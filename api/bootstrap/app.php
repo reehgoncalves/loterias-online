@@ -11,7 +11,17 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(web: __DIR__.'/../routes/web.php', api: __DIR__.'/../routes/api.php', commands: __DIR__.'/../routes/console.php', health: '/up', apiPrefix: $apiPrefix)
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->statefulApi();
-        $middleware->validateCsrfTokens(except: ['api/*', 'stripe/*']);
+        // API calls use Sanctum bearer tokens or signed secrets rather than
+        // browser session cookies. Keep CSRF protection on web routes while
+        // excluding the tokenized API surface from browser-only CSRF checks.
+        $middleware->validateCsrfTokens(except: [
+            'api/*',
+            'auth/*',
+            'v1/*',
+            'stripe/*',
+            'internal/*',
+            'cron/*',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->render(function (Throwable $e, $request) {
