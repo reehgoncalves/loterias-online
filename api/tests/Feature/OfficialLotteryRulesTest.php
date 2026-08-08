@@ -65,7 +65,7 @@ class OfficialLotteryRulesTest extends TestCase
 
     public function test_admin_sync_imports_official_result_and_exposes_winners_data(): void
     {
-        Http::fake(['https://servicebus2.caixa.gov.br/portaldeloterias/api/mega-sena' => Http::response([
+        Http::fake(['https://servicebus2.caixa.gov.br/portaldeloterias/api/mega-sena/' => Http::response([
             'numero' => 4001,
             'dataApuracao' => '08/08/2026',
             'listaDezenas' => ['01','02','03','04','05','06'],

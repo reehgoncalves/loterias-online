@@ -9,7 +9,7 @@ class CaixaResultsClient
 {
     public function latest(string $slug): array
     {
-        $url = str_replace('{slug}', $slug, (string) env('LOTTERY_RESULTS_URL', 'https://servicebus2.caixa.gov.br/portaldeloterias/api/{slug}'));
+        $url = rtrim(str_replace('{slug}', $slug, (string) env('LOTTERY_RESULTS_URL', 'https://servicebus2.caixa.gov.br/portaldeloterias/api/{slug}')), '/').'/';
         if (! filter_var($url, FILTER_VALIDATE_URL) || ! str_starts_with($url, 'https://')) throw new RuntimeException('Endpoint de resultados inválido.');
         $response = Http::timeout(15)
             ->retry(2, 250, throw: false)
