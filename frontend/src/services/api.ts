@@ -1,4 +1,5 @@
-const API_URL = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
+const configuredApiUrl = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? window.location.origin : 'http://127.0.0.1:8000');
+const API_URL = configuredApiUrl.replace(/\/$/, '');
 
 export type ApiOptions = RequestInit & { token?: string | null };
 
