@@ -10,14 +10,16 @@ const hopByHopHeaders = new Set([
 ]);
 
 export default async function handler(req, res) {
-  const pathParts = Array.isArray(req.query?.path)
-    ? req.query.path
-    : typeof req.query?.path === 'string'
-      ? [req.query.path]
-      : [];
-  const target = new URL(`/api/${pathParts.map(encodeURIComponent).join('/')}`, API_ORIGIN);
+  const rawPath = Array.isArray(req.query?.path)
+    ? req.query.path.join('/')
+    : String(req.query?.path || '');
+  const path = rawPath.split('/').map((part) => decodeURIComponent(part)).filter(Boolean).join('/');
   const requestUrl = new URL(req.url, 'http://localhost');
-  requestUrl.searchParams.forEach((value, key) => target.searchParams.append(key, value));
+  const target = new URL(`/api/${path}`, API_ORIGIN);
+
+  requestUrl.searchParams.forEach((value, key) => {
+    if (key !== 'path') target.searchParams.append(key, value);
+  });
 
   const headers = new Headers();
   for (const [name, value] of Object.entries(req.headers)) {
@@ -35,12 +37,7 @@ export default async function handler(req, res) {
         : JSON.stringify(req.body);
 
   try {
-    const upstream = await fetch(target, {
-      method: req.method,
-      headers,
-      body,
-    });
-
+    const upstream = await fetch(target, { method: req.method, headers, body });
     upstream.headers.forEach((value, name) => {
       if (!hopByHopHeaders.has(name.toLowerCase())) res.setHeader(name, value);
     });

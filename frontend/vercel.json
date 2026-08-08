@@ -6,7 +6,7 @@
   "rewrites": [
     {
       "source": "/x/:path*",
-      "destination": "/api/:path*"
+      "destination": "/api/proxy?path=:path*"
     }
   ]
 }
