@@ -11,7 +11,16 @@ class CaixaResultsClient
     {
         $url = str_replace('{slug}', $slug, (string) env('LOTTERY_RESULTS_URL', 'https://servicebus2.caixa.gov.br/portaldeloterias/api/{slug}'));
         if (! filter_var($url, FILTER_VALIDATE_URL) || ! str_starts_with($url, 'https://')) throw new RuntimeException('Endpoint de resultados inválido.');
-        $response = Http::timeout(15)->acceptJson()->get($url);
+        $response = Http::timeout(15)
+            ->retry(2, 250, throw: false)
+            ->withHeaders([
+                'Accept' => 'application/json, text/plain, */*',
+                'Accept-Language' => 'pt-BR,pt;q=0.9,en;q=0.8',
+                'Origin' => 'https://loterias.caixa.gov.br',
+                'Referer' => 'https://loterias.caixa.gov.br/',
+                'User-Agent' => 'LoteriasOnline/1.0 (+https://loterias-online-alpha.vercel.app/)',
+            ])
+            ->get($url);
         if (! $response->successful()) throw new RuntimeException('Fonte de resultados indisponível: HTTP '.$response->status());
         $payload = $response->json();
         if (! is_array($payload) || empty($payload['numero'])) throw new RuntimeException('Resposta de resultado sem concurso válido.');
