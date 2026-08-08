@@ -27,20 +27,20 @@ class CaixaResultsClient
         $numbers = $payload['listaDezenas'] ?? $payload['dezenas'] ?? [];
         return [
             'contest_number' => (int) $payload['numero'],
-            'draw_at' => $this->parseDate($payload['dataApuracao'] ?? now()->toDateTimeString()),
+            'draw_at' => $this->parseDate($payload['dataApuracao'] ?? now()->toDateTimeString(), '21:00:00'),
             'numbers' => array_values(array_map('intval', $numbers)),
             'special' => $payload['nomeTimeCoracao'] ?? $payload['nomeTimeCoracaoMesSorte'] ?? $payload['mesSorte'] ?? $payload['timeCoracao'] ?? null,
             'next_contest_number' => (int) ($payload['numeroConcursoProximo'] ?? 0),
-            'next_draw_at' => $this->parseDate($payload['dataProximoConcurso'] ?? null),
+            'next_draw_at' => $this->parseDate($payload['dataProximoConcurso'] ?? null, '21:00:00'),
             'raw' => $payload,
         ];
     }
 
-    private function parseDate(?string $date): ?string
+    private function parseDate(?string $date, string $time = '00:00:00'): ?string
     {
         if (! $date) return null;
 
-        $parsed = \DateTimeImmutable::createFromFormat('d/m/Y', trim($date));
+        $parsed = \DateTimeImmutable::createFromFormat('!d/m/Y H:i:s', trim($date).' '.$time);
         if ($parsed === false) {
             try { $parsed = new \DateTimeImmutable($date); } catch (\Throwable) { return null; }
         }

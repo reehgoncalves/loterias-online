@@ -81,6 +81,8 @@ class OfficialLotteryRulesTest extends TestCase
         $this->assertDatabaseHas('draws', ['lottery_game_id'=>$game->id,'contest_number'=>4001,'status'=>'settled']);
         $this->assertDatabaseHas('draws', ['lottery_game_id'=>$game->id,'contest_number'=>4002,'status'=>'open']);
         $this->assertDatabaseHas('draws', ['lottery_game_id'=>$game->id,'contest_number'=>4000,'status'=>'closed']);
+        $this->assertSame('2026-08-08 21:00:00', Draw::where('lottery_game_id', $game->id)->where('contest_number', 4001)->value('draw_at')->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-08-09 21:00:00', Draw::where('lottery_game_id', $game->id)->where('contest_number', 4002)->value('draw_at')->format('Y-m-d H:i:s'));
         $this->getJson('/api/v1/catalog')
             ->assertOk()
             ->assertJsonPath('data.0.next_draw.contest_number', 4002)
