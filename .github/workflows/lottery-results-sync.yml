@@ -1,0 +1,81 @@
+name: Official lottery results sync
+
+on:
+  workflow_dispatch:
+  schedule:
+    # External collector: more frequent than the Vercel Hobby daily cron,
+    # while keeping the Vercel scheduler as a protected fallback.
+    - cron: '*/10 * * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  collect-and-ingest:
+    runs-on: ubuntu-latest
+    env:
+      API_BASE_URL: https://loterias-online-api.vercel.app
+      RESULTS_INGEST_SECRET: ${{ secrets.RESULTS_INGEST_SECRET }}
+    steps:
+      - name: Collect official CAIXA results and ingest them
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -n "${RESULTS_INGEST_SECRET}" || {
+            echo "RESULTS_INGEST_SECRET is not configured in GitHub Actions."
+            exit 1
+          }
+
+          failed=0
+          for slug in megasena lotofacil quina timemania diadesorte duplasena lotomania supersete; do
+            response_file="$(mktemp)"
+            http_code="$(curl --silent --show-error --location --max-time 30 --retry 2 \
+              --output "${response_file}" --write-out '%{http_code}' \
+              -H 'Accept: application/json, text/plain, */*' \
+              -H 'Accept-Language: pt-BR,pt;q=0.9,en;q=0.8' \
+              -H 'Origin: https://loterias.caixa.gov.br' \
+              -H 'Referer: https://loterias.caixa.gov.br/' \
+              -H 'User-Agent: LoteriasOnlineResultsSync/1.0' \
+              "https://servicebus2.caixa.gov.br/portaldeloterias/api/${slug}/")"
+
+            if [[ "${http_code}" != "200" ]]; then
+              echo "${slug}: CAIXA retornou HTTP ${http_code}"
+              failed=1
+              rm -f "${response_file}"
+              continue
+            fi
+
+            if ! jq -e '(.numero != null) and (.dataApuracao != null) and (((.listaDezenas // .dezenas // []) | length) > 0)' "${response_file}" >/dev/null; then
+              echo "${slug}: resposta sem concurso ou dezenas válidas"
+              failed=1
+              rm -f "${response_file}"
+              continue
+            fi
+
+            payload="$(jq -c --arg slug "${slug}" '{
+              source: "caixa",
+              slug: $slug,
+              contest_number: (.numero | tonumber),
+              draw_at: .dataApuracao,
+              numbers: ((.listaDezenas // .dezenas // []) | map(tonumber)),
+              special: (.nomeTimeCoracao // .nomeTimeCoracaoMesSorte // .mesSorte // .timeCoracao // null),
+              raw: .
+            }' "${response_file}")"
+
+            if ! curl --silent --show-error --fail-with-body --location --max-time 30 \
+              -X POST "${API_BASE_URL}/api/internal/lottery-results" \
+              -H "Authorization: Bearer ${RESULTS_INGEST_SECRET}" \
+              -H 'Accept: application/json' \
+              -H 'Content-Type: application/json' \
+              --data "${payload}"; then
+              echo "${slug}: falha ao enviar resultado para a API"
+              failed=1
+            else
+              echo "${slug}: resultado coletado e enviado"
+            fi
+
+            rm -f "${response_file}"
+          done
+
+          exit "${failed}"

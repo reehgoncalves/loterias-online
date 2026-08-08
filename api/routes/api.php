@@ -9,9 +9,12 @@ use App\Http\Controllers\OrderController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\StripeWebhookController;
 use App\Http\Controllers\WalletController;
+use App\Models\LotteryGame;
+use App\Services\LotteryResultImporter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Validation\Rule;
 
 Route::get('v1/catalog', [CatalogController::class, 'index']);
 Route::get('v1/pools', [CatalogController::class, 'pools']);
@@ -19,6 +22,50 @@ Route::get('v1/testimonials', [CatalogController::class, 'testimonials']);
 Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttle:auth');
 Route::post('auth/register', [AuthController::class, 'register'])->middleware('throttle:auth');
 Route::post('stripe/webhook', StripeWebhookController::class);
+
+// GitHub Actions is the external collector used when the CAIXA service blocks
+// Vercel serverless egress. It accepts only normalized official payloads and
+// never exposes a public command runner or a database write surface.
+Route::post('internal/lottery-results', function (Request $request, LotteryResultImporter $importer) {
+    $secret = (string) env('RESULTS_INGEST_SECRET');
+    $authorization = (string) $request->header('Authorization');
+
+    if ($secret === '' || ! hash_equals('Bearer '.$secret, $authorization)) {
+        return response()->json(['message' => 'Não autorizado.'], 401);
+    }
+
+    $payload = $request->validate([
+        'source' => ['required', Rule::in(['caixa'])],
+        'slug' => ['required', 'string', 'max:80'],
+        'contest_number' => ['required', 'integer', 'min:1'],
+        'draw_at' => ['required', 'date'],
+        'numbers' => ['required', 'array', 'min:1', 'max:60'],
+        'numbers.*' => ['required', 'integer', 'min:0', 'max:99'],
+        'special' => ['nullable', 'string', 'max:120'],
+        'raw' => ['required', 'array'],
+    ]);
+
+    $game = LotteryGame::query()
+        ->where('slug', $payload['slug'])
+        ->where('active', true)
+        ->first();
+
+    if (! $game) {
+        return response()->json(['message' => 'Modalidade não encontrada ou inativa.'], 422);
+    }
+
+    $draw = $importer->import($game, $payload);
+
+    return response()->json([
+        'data' => [
+            'id' => $draw->id,
+            'slug' => $game->slug,
+            'contest_number' => $draw->contest_number,
+            'status' => $draw->status,
+            'synced_at' => $draw->synced_at,
+        ],
+    ]);
+});
 
 // Vercel invokes this endpoint from its Cron integration. Keep the scheduler
 // behind a secret so it cannot be used as a public command runner.

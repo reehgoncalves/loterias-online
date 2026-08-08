@@ -18,6 +18,7 @@ Plataforma nova, separada do `apetit-ops-hub`, com storefront em Vue 3 e API Lar
   lançamento até passar por homologação bancária e revisão de risco;
 - webhook de pagamento idempotente;
 - sincronização configurável com o endpoint oficial de resultados CAIXA;
+- coleta externa dos resultados oficiais via GitHub Actions, protegida por `RESULTS_INGEST_SECRET` para contornar bloqueios de egress do Vercel;
 - job de liquidação automática de concursos;
 - guard de risco: reserva, margem mínima e teto de exposição por concurso;
 - painel administrativo com apostas, pagamentos, bolões, margem e exposição;
